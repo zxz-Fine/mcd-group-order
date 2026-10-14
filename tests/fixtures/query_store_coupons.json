@@ -1,0 +1,35 @@
+{
+  "_comment": "按麦当劳 MCP query-store-coupons 实测字段结构构造的样例（该账号当前无可用券，故为结构样例）。注意：券是按商品绑定，没有面额与门槛字段。",
+  "success": true,
+  "code": 200,
+  "message": "请求成功",
+  "data": [
+    {
+      "title": "中薯条买一送一",
+      "couponId": "CP20261014001",
+      "couponCode": "CC-9F3A21",
+      "tradeDateTime": "2026-10-14 00:00:00 - 2026-10-20 23:59:59",
+      "products": [
+        { "productName": "中薯条", "productCode": "4810" }
+      ]
+    },
+    {
+      "title": "可乐第二杯半价",
+      "couponId": "CP20261014002",
+      "couponCode": "CC-7B2E08",
+      "tradeDateTime": "2026-10-01 00:00:00 - 2026-10-31 23:59:59",
+      "products": [
+        { "productName": "可乐", "productCode": "9900008751" }
+      ]
+    },
+    {
+      "title": "麦旋风买一送一",
+      "couponId": "CP20261014003",
+      "couponCode": "CC-11AC55",
+      "tradeDateTime": "2026-10-10 00:00:00 - 2026-10-25 23:59:59",
+      "products": [
+        { "productName": "经典麦旋风", "productCode": "9900008754" }
+      ]
+    }
+  ]
+}

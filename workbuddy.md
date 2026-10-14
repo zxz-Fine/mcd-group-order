@@ -59,6 +59,46 @@
 
 ---
 
+## 会话 5 · MCP 真实联调（关键修正）
+
+**用户**：mcp已添加
+
+**WorkBuddy**：读取 `~/.workbuddy-ai/mcp.json` 确认 `mcd-mcp` 已配置，随后对麦当劳 MCP 发起**真实只读调用**做字段校准
+（`now-time-info`、`query-nearby-stores`、`query-meals`、`query-store-coupons`、`query-my-coupons`、
+`available-coupons`、`calculate-price`、`list-nutrition-foods`、`campaign-calendar`）。
+
+联调暴露出 **5 处与原始假设不符**，其中 3 处会让脚本直接跑不通：
+
+1. **金额单位是「分」**：`calculate-price` 的 `discount`/`price`/`deliveryPrice`/`packingPrice`
+   全部为分。原设计按「元」处理，会导致金额放大 100 倍。
+2. **`query-meals` 的 `data.meals` 是以餐品编码为 key 的字典，不是数组**：
+   原 `normalize_menu()` 按数组遍历，实际会得到空菜单。
+3. **优惠券是按商品绑定的，没有面额也没有门槛**：原「满 X 减 Y」的券模型完全不成立，
+   按门槛剪枝的逻辑失效。
+4. **返回格式不统一**：`query-my-coupons` / `available-coupons` / `campaign-calendar`
+   返回 Markdown 文本而非 JSON。
+5. **`query-meals` / `calculate-price` 的 `storeCode`/`orderType`/`beType` 均为必填**，
+   且到店自取（beType=1）不传 `beCode`、得来速（beType=5）必须传。
+
+**据此完成的修正**：
+
+- `split_bill.py`：新增 `*_cents` 字段与 `subtotal_cents` 精确小计支持，全程以分为单位
+- `match_menu.py`：重写 `normalize_menu()`，兼容「编码为 key 的字典」与嵌套 `data.meals`
+- `plan_coupons.py`：**重写为按 `productCode` 的券↔商品映射模型**，不再预测优惠金额
+- `from_price.py`（新增）：把 `calculate-price` 响应 + 报单归属转成分账输入，
+  用最大余额法把商品小计精确分摊到人，并内置金额自检
+- `SKILL.md`：按实测参数重写工作流，新增「MCP 实测要点」章节
+- `MCP_INTEGRATION.md`：新增「实测校准结果」章节
+- 新增 `tests/test_mcp_formats.py`（15 项）与 `tests/fixtures/`，用实测响应锁定字段结构
+
+**验证**：测试从 22 项增至 **37 项，全部通过**。端到端实测（storeCode=1950564）：
+`calculate-price` 返回原价 ¥74.00 → 4 人分账 25.50/25.50/13.50/9.50，合计精确等于 ¥74.00。
+
+**未验证部分（如实记录）**：该账号 `query-store-coupons` 与 `query-my-coupons` 均返回空，
+**券链路未能端到端验证**，仅按官方 schema 锁定字段结构；`create-order` 等写操作亦未实测。
+
+---
+
 ## 使用说明
 
 本项目在 WorkBuddy 中运行的最小闭环：

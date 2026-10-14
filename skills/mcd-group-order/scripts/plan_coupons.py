@@ -2,19 +2,29 @@
 # -*- coding: utf-8 -*-
 """麦麦拼单官 · 券组合候选生成器 (plan_coupons)
 
-麦当劳 MCP 的 ``query-store-coupons`` / ``query-my-coupons`` 会返回一批券，
-但「这堆券怎么组合最省」对普通用户是不透明的。
+⚠️ 本模块的模型基于**实测**的麦当劳 MCP 返回结构，与常见假设不同：
 
-本脚本负责把候选空间**剪枝**成至多 N 个（默认 8 个）值得一试的组合，
-再由 ``calculate-price`` 做权威试算，最终选出应付总价最低的方案。
-这样既能逼近最优解，又把 MCP 调用量压在限流阈值以内。
+麦当劳的优惠券是**按商品绑定**的，不是「满 X 减 Y」的门槛券。``query-store-coupons``
+返回的每条券长这样（实测）::
 
-设计要点
---------
-- **容错解析**：MCP 券字段名可能随版本变化，本脚本用多候选键名 + 正则兜底抽取
-  「面额 / 门槛 / 类型 / 是否可叠加」，抽不到的字段记入 ``unparsed`` 交给 LLM 兜底。
-- **候选剪枝**：门槛过滤 → 单券候选 → 可叠加券的组合（≤3 张）→ 按理论优惠降序取 TopK。
-- **凑单提示**：券门槛略高于当前小计时，给出「再加 X 元可减 Y 元」的建议。
+    {
+      "title": "中薯条买一送一",
+      "couponId": "...",
+      "couponCode": "...",
+      "tradeDateTime": "...",
+      "products": [{"productName": "中薯条", "productCode": "4810"}]
+    }
+
+**券数据里没有面额、也没有门槛**——真实优惠额只有 ``calculate-price`` 才知道
+（它在 ``data.enjoyed.realDiscount`` / ``data.discount`` 里给出，单位是分）。
+
+因此本脚本的职责被限定为两件事：
+
+1. **建立映射**：把每张券关联到购物车里它能作用的商品（按 ``productCode`` 匹配）。
+2. **剪枝出候选**：产出至多 N 个值得一试的「券 × 商品」组合，交由 ``calculate-price``
+   权威试算，最终取 ``data.price`` 最低者。
+
+**本脚本不预测优惠金额**，避免给出误导性的「预计省 X 元」。
 
 本脚本**不联网、不消耗 MCP 配额**。
 """
@@ -22,239 +32,274 @@
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
-import re
 import sys
 from dataclasses import dataclass, field
 from typing import Sequence
 
 from split_bill import cents_to_yuan, yuan_to_cents
 
-MAX_COMBOS = 200  # 组合枚举上限，防止爆炸
+MAX_COMBOS = 60
 
-RE_NUM = re.compile(r"(\d+(?:\.\d+)?)")
-RE_DISCOUNT = re.compile(r"(\d+(?:\.\d+)?)\s*折")
+# 容错键名（不同接口/版本可能不同）
+_ID_KEYS = ("couponId", "coupon_id", "id", "activityId")
+_CODE_KEYS = ("couponCode", "coupon_code", "code")
+_TITLE_KEYS = ("title", "couponName", "name", "couponTitle", "activityName")
+_DATE_KEYS = ("tradeDateTime", "validDate", "expireTime", "validEndTime")
+_PRODUCT_LIST_KEYS = ("products", "productList", "applicableProducts", "items")
+# 面额/门槛为**可选**增强字段：真实券数据通常没有
+_AMOUNT_KEYS = ("discountAmount", "amount", "value", "faceValue", "reduceAmount")
+_THRESHOLD_KEYS = ("threshold", "minAmount", "useCondition", "limitAmount")
 
 
 @dataclass
 class Coupon:
     cid: str
     name: str
-    amount_cents: int = 0
-    threshold_cents: int = 0
-    kind: str = "unknown"  # full_reduction | discount | item | unknown
-    stackable: bool | None = None
+    codes: list[str] = field(default_factory=list)
+    products: list[dict] = field(default_factory=list)  # [{productCode, productName}]
+    trade_datetime: str = ""
+    amount_cents: int = 0     # 可选
+    threshold_cents: int = 0  # 可选
     raw: dict = field(default_factory=dict)
 
-    def theoretical_saving(self, subtotal_cents: int) -> int:
-        """理论优惠额（乐观估计，最终以 calculate-price 为准）。"""
-        if self.kind == "full_reduction":
-            return self.amount_cents if subtotal_cents >= self.threshold_cents else 0
-        if self.kind == "discount":
-            return 0  # 折扣率未知，交由 calculate-price 判定
-        if self.kind == "item":
-            return self.amount_cents if subtotal_cents >= self.threshold_cents else 0
-        return self.amount_cents if subtotal_cents >= self.threshold_cents else 0
+    @property
+    def product_codes(self) -> set[str]:
+        return {str(p.get("productCode") or p.get("code") or "") for p in self.products} - {""}
 
-    def eligible(self, subtotal_cents: int) -> bool:
-        return subtotal_cents >= self.threshold_cents
+    @property
+    def product_names(self) -> list[str]:
+        return [
+            str(p.get("productName") or p.get("name") or "")
+            for p in self.products
+            if (p.get("productName") or p.get("name"))
+        ]
 
     def to_dict(self) -> dict:
         return {
-            "id": self.cid,
+            "coupon_id": self.cid,
             "name": self.name,
-            "amount": cents_to_yuan(self.amount_cents),
-            "threshold": cents_to_yuan(self.threshold_cents),
-            "kind": self.kind,
-            "stackable": self.stackable,
+            "coupon_codes": self.codes,
+            "applies_to": self.product_names or sorted(self.product_codes),
+            "trade_datetime": self.trade_datetime,
         }
-
-
-# --------------------------------------------------------------------------- #
-# 容错解析
-# --------------------------------------------------------------------------- #
-_ID_KEYS = ("couponId", "coupon_id", "id", "code", "couponCode", "activityId")
-_NAME_KEYS = ("couponName", "name", "title", "couponTitle", "activityName", "desc", "description")
-_AMOUNT_KEYS = ("discountAmount", "amount", "value", "faceValue", "parValue", "reduceAmount", "couponAmount")
-_THRESHOLD_KEYS = ("threshold", "minAmount", "useCondition", "limitAmount", "conditionAmount", "minConsume", "fullAmount")
-_STACK_KEYS = ("stackable", "canStack", "isStackable", "canSuperimpose", "superposable")
 
 
 def _first(raw: dict, keys: Sequence[str]):
     for k in keys:
-        if k in raw and raw[k] not in (None, ""):
-            return raw[k]
+        v = raw.get(k)
+        if v not in (None, "", [], {}):
+            return v
     return None
 
 
-def _extract_amount(raw: dict) -> tuple[int, bool]:
-    """返回 (面额分, 是否成功)。"""
-    v = _first(raw, _AMOUNT_KEYS)
-    if v is not None:
-        try:
-            return yuan_to_cents(v), True
-        except (TypeError, ValueError):
-            pass
-    # 从文案里抠「减20」「立减 15.5」
-    for k in _NAME_KEYS:
-        text = str(raw.get(k, ""))
-        m = re.search(r"减\s*(\d+(?:\.\d+)?)", text)
-        if m:
-            return yuan_to_cents(m.group(1)), True
-    return 0, False
+def normalize_coupons(raw_list) -> tuple[list[Coupon], list[dict]]:
+    """把各种形态的券输入归一为 ``Coupon`` 列表。
 
+    兼容：MCP 原始响应（``{"data": [...]}``）、纯数组、单对象。
+    """
+    if isinstance(raw_list, dict):
+        node = raw_list
+        for key in ("data", "result"):
+            # 必须判断 node 仍是 dict：一旦下钻到数组就要停止，
+            # 否则下一轮 node.get() 会抛 AttributeError（实测踩过）。
+            if not isinstance(node, dict):
+                break
+            nxt = node.get(key)
+            if isinstance(nxt, (list, dict)):
+                node = nxt
+        raw_list = node if isinstance(node, list) else [node]
+    if not isinstance(raw_list, list):
+        return [], [{"reason": "券输入不是数组", "raw": raw_list}]
 
-def _extract_threshold(raw: dict) -> int:
-    v = _first(raw, _THRESHOLD_KEYS)
-    if v is not None:
-        try:
-            return yuan_to_cents(v)
-        except (TypeError, ValueError):
-            pass
-    for k in _NAME_KEYS:
-        text = str(raw.get(k, ""))
-        m = re.search(r"满\s*(\d+(?:\.\d+)?)", text)
-        if m:
-            return yuan_to_cents(m.group(1))
-    return 0
-
-
-def _extract_kind(raw: dict, name: str) -> str:
-    text = f"{raw.get('type', '')} {raw.get('couponType', '')} {name}"
-    if RE_DISCOUNT.search(text) or "折扣" in text:
-        return "discount"
-    if "满" in text or "减" in text:
-        return "full_reduction"
-    if any(k in text for k in ("单品", "指定商品", "兑换", "买一送一", "第二份")):
-        return "item"
-    return "unknown"
-
-
-def normalize_coupons(raw_list: Sequence[dict]) -> tuple[list[Coupon], list[dict]]:
     coupons: list[Coupon] = []
-    unparsed: list[dict] = []
+    skipped: list[dict] = []
 
-    for i, raw in enumerate(raw_list or []):
+    for i, raw in enumerate(raw_list):
         if not isinstance(raw, dict):
-            unparsed.append({"index": i, "raw": raw, "reason": "非对象结构"})
+            skipped.append({"index": i, "reason": "非对象结构"})
             continue
-        cid = str(_first(raw, _ID_KEYS) or f"coupon-{i}")
-        name = str(_first(raw, _NAME_KEYS) or f"未命名券-{i}").strip()
-        amount, ok_amount = _extract_amount(raw)
-        threshold = _extract_threshold(raw)
-        kind = _extract_kind(raw, name)
-        stack_raw = _first(raw, _STACK_KEYS)
-        stackable = None if stack_raw is None else bool(stack_raw)
 
-        c = Coupon(
-            cid=cid, name=name, amount_cents=amount,
-            threshold_cents=threshold, kind=kind,
-            stackable=stackable, raw=raw,
+        title = _first(raw, _TITLE_KEYS)
+        if not title:
+            skipped.append({"index": i, "reason": "缺少券名，已跳过"})
+            continue
+
+        raw_code = _first(raw, _CODE_KEYS)
+        if isinstance(raw_code, list):
+            codes = [str(c) for c in raw_code if c]
+        else:
+            codes = [str(raw_code)] if raw_code else []
+
+        products = []
+        pl = _first(raw, _PRODUCT_LIST_KEYS)
+        if isinstance(pl, list):
+            products = [p for p in pl if isinstance(p, dict)]
+        elif isinstance(pl, dict):
+            products = [pl]
+
+        amount = _first(raw, _AMOUNT_KEYS)
+        threshold = _first(raw, _THRESHOLD_KEYS)
+
+        coupons.append(
+            Coupon(
+                cid=str(_first(raw, _ID_KEYS) or f"coupon-{i}"),
+                name=str(title).strip(),
+                codes=codes,
+                products=products,
+                trade_datetime=str(_first(raw, _DATE_KEYS) or ""),
+                amount_cents=yuan_to_cents(amount) if amount is not None else 0,
+                threshold_cents=yuan_to_cents(threshold) if threshold is not None else 0,
+                raw=raw,
+            )
         )
-        coupons.append(c)
 
-        if not ok_amount and kind != "discount":
-            unparsed.append({"id": cid, "name": name, "reason": "未能抽出面额，需 LLM 兜底"})
-
-    return coupons, unparsed
+    return coupons, skipped
 
 
-# --------------------------------------------------------------------------- #
-# 候选生成
-# --------------------------------------------------------------------------- #
 def plan(
-    raw_coupons: Sequence[dict],
-    subtotal_cents: int,
+    raw_coupons,
+    cart_items: Sequence[dict],
     top_k: int = 8,
-    max_stack: int = 3,
+    max_stack: int = 2,
 ) -> dict:
-    coupons, unparsed = normalize_coupons(raw_coupons)
+    """生成券组合候选。
+
+    :param cart_items: ``[{productCode, name, unit_price_cents, qty, person}]``
+    :param max_stack: 单个候选里最多同时使用几张券（真实场景多为 1 张）
+    """
+    coupons, skipped = normalize_coupons(raw_coupons)
     warnings: list[str] = []
 
-    eligible = [c for c in coupons if c.eligible(subtotal_cents)]
-    ineligible = [c for c in coupons if not c.eligible(subtotal_cents)]
+    # productCode -> 该编码在购物车中的原始小计（分）
+    cart_value: dict[str, int] = {}
+    for it in cart_items:
+        code = str(it.get("productCode") or it.get("code") or "")
+        if not code:
+            continue
+        cart_value[code] = cart_value.get(code, 0) + int(it.get("unit_price_cents", 0)) * int(
+            it.get("qty", 1) or 1
+        )
 
-    # ---- 候选组合 ---- #
-    combos: list[tuple[tuple[Coupon, ...], int]] = [((), 0)]  # 基线：不用券
+    if not cart_value:
+        return {
+            "candidates": [{"label": "不使用优惠券（基线）", "apply": [], "covered_value": "0.00"}],
+            "usable": [],
+            "unusable": [],
+            "warnings": ["购物车为空或缺少 productCode，无法生成券候选。"],
+            "next_step": "请先用 match_menu.py 得到带 productCode 的购物车。",
+        }
 
-    for c in eligible:
-        combos.append(((c,), c.theoretical_saving(subtotal_cents)))
+    usable: list[dict] = []
+    unusable: list[dict] = []
 
-    # 可叠加的券才参与组合。stackable 为 None 时保守起见也纳入（交由试算裁决）
-    stackable = [c for c in eligible if c.stackable is not False]
-    for size in range(2, max_stack + 1):
-        if len(stackable) < size:
-            break
-        for combo in itertools.combinations(stackable, size):
-            if len(combos) >= MAX_COMBOS:
-                warnings.append(f"组合数达到上限 {MAX_COMBOS}，已截断，结果可能非全局最优。")
+    for c in coupons:
+        covered = [code for code in c.product_codes if code in cart_value]
+        if not covered:
+            unusable.append(
+                {
+                    **c.to_dict(),
+                    "reason": "本单没有该券适用的商品",
+                    "missing_products": c.product_names,
+                }
+            )
+            continue
+        usable.append(
+            {
+                "coupon": c,
+                "covered_codes": covered,
+                "covered_value_cents": sum(cart_value[x] for x in covered),
+            }
+        )
+
+    # 覆盖金额降序：覆盖越贵的商品越可能省得多（弱启发式，仅用于排序与剪枝）
+    usable.sort(key=lambda x: -x["covered_value_cents"])
+
+    # ---- 候选生成 ---- #
+    candidates: list[dict] = [{"label": "不使用优惠券（基线）", "apply": [], "_v": 0, "_n": 0}]
+
+    # 1) 单券候选：全部保留，一张都不漏
+    for u in usable:
+        c: Coupon = u["coupon"]
+        candidates.append(
+            {
+                "label": c.name,
+                "apply": [
+                    {
+                        "productCode": code,
+                        "couponId": c.cid,
+                        "couponCode": c.codes[0] if c.codes else "",
+                    }
+                    for code in u["covered_codes"]
+                ],
+                "_v": u["covered_value_cents"],
+                "_n": 1,
+            }
+        )
+
+    # 2) 贪心叠加：券互不覆盖商品时才叠加
+    if max_stack >= 2 and len(usable) >= 2:
+        used: set[str] = set()
+        combo: list[dict] = []
+        labels: list[str] = []
+        value = 0
+        for u in usable:
+            c: Coupon = u["coupon"]
+            if used & set(u["covered_codes"]):
+                continue
+            used |= set(u["covered_codes"])
+            value += u["covered_value_cents"]
+            labels.append(c.name)
+            combo.append(
+                {
+                    "productCode": u["covered_codes"][0],
+                    "couponId": c.cid,
+                    "couponCode": c.codes[0] if c.codes else "",
+                }
+            )
+            if len(combo) >= max_stack:
                 break
-            saving = sum(c.theoretical_saving(subtotal_cents) for c in combo)
-            combos.append((combo, saving))
-        if len(combos) >= MAX_COMBOS:
-            break
+        if len(combo) >= 2:
+            candidates.append(
+                {"label": " + ".join(labels), "apply": combo, "_v": value, "_n": len(combo)}
+            )
 
-    # ---- 排序去重 ---- #
-    combos.sort(key=lambda x: (-x[1], len(x[0])))
-    seen: set[tuple[str, ...]] = set()
-    candidates: list[dict] = []
-    for combo, saving in combos:
-        key = tuple(sorted(c.cid for c in combo))
+    if len(candidates) > MAX_COMBOS:
+        warnings.append(f"候选数超过上限 {MAX_COMBOS}，已截断。")
+        candidates = candidates[:MAX_COMBOS]
+
+    # 排序：覆盖金额降序，其次用券数升序（少用券更简单）
+    candidates.sort(key=lambda x: (-x["_v"], x["_n"]))
+
+    seen: set[tuple] = set()
+    out: list[dict] = []
+    for c in candidates:
+        key = tuple(sorted((a["productCode"], a["couponId"]) for a in c["apply"]))
         if key in seen:
             continue
         seen.add(key)
-        candidates.append(
+        out.append(
             {
-                "label": " + ".join(c.name for c in combo) if combo else "不使用优惠券",
-                "coupon_ids": [c.cid for c in combo],
-                "theoretical_saving": cents_to_yuan(saving),
-                "_saving_cents": saving,
+                "label": c["label"],
+                "apply": c["apply"],
+                "covered_value": cents_to_yuan(c["_v"]),
             }
         )
-        if len(candidates) >= top_k:
+        if len(out) >= top_k:
             break
 
-    # ---- 凑单提示 ---- #
-    near_miss: list[dict] = []
-    for c in ineligible:
-        gap = c.threshold_cents - subtotal_cents
-        if gap <= 0:
-            continue
-        gain = c.amount_cents - gap
-        near_miss.append(
-            {
-                "coupon": c.name,
-                "gap": cents_to_yuan(gap),
-                "hint": (
-                    f"再加 ¥{cents_to_yuan(gap)} 可用「{c.name}」"
-                    + (f"，净省 ¥{cents_to_yuan(gain)}" if gain > 0 else "（净收益为负，不建议凑单）")
-                ),
-                "_gain_cents": gain,
-            }
-        )
-    near_miss.sort(key=lambda x: -x["_gain_cents"])
-    near_miss = [x for x in near_miss if x["_gain_cents"] > 0][:3]
-    for x in near_miss:
-        x.pop("_gain_cents", None)
-
-    if not eligible:
-        warnings.append("当前小计下没有任何券满足门槛，建议直接下单或参考凑单提示。")
-
-    for c in candidates:
-        c.pop("_saving_cents", None)
-
     return {
-        "subtotal": cents_to_yuan(subtotal_cents),
+        "cart_value": cents_to_yuan(sum(cart_value.values())),
         "coupon_total": len(coupons),
-        "eligible": len(eligible),
-        "candidates": candidates,
-        "near_miss": near_miss,
-        "unparsed": unparsed,
+        "usable": [u["coupon"].to_dict() for u in usable],
+        "unusable": unusable,
+        "candidates": out,
+        "skipped": skipped,
         "warnings": warnings,
         "next_step": (
-            "请对 candidates 中的每个组合调用 MCP 工具 calculate-price 试算，"
-            "取应付总价最低者为最终方案。"
+            "对 candidates 中的每个组合，把 apply 里的 couponId/couponCode 挂到对应 "
+            "productCode 上调用 MCP 工具 calculate-price 试算，取 data.price（单位：分）"
+            "最低者为最终方案。注意：本脚本不预测优惠金额，一切以 calculate-price 为准。"
         ),
     }
 
@@ -262,11 +307,11 @@ def plan(
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="plan_coupons",
-        description="麦麦拼单官 · 券组合候选生成器（本地运行，不消耗 MCP 配额）",
+        description="麦麦拼单官 · 券组合候选生成器（按商品绑定模型，本地运行不消耗配额）",
     )
-    p.add_argument("--input", "-i", help="输入 JSON 文件（含 coupons 与 subtotal）；缺省从 stdin 读取")
+    p.add_argument("--input", "-i", help="输入 JSON（含 coupons 与 cart_items）；缺省从 stdin 读取")
     p.add_argument("--top-k", type=int, default=8, help="返回的候选组合数上限（默认 8）")
-    p.add_argument("--max-stack", type=int, default=3, help="单次组合最多叠加的券数（默认 3）")
+    p.add_argument("--max-stack", type=int, default=2, help="单个候选最多叠加几张券（默认 2）")
     return p
 
 
@@ -279,10 +324,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         payload = json.load(sys.stdin)
 
-    subtotal_cents = yuan_to_cents(payload.get("subtotal", 0))
+    cart = payload.get("cart_items") or payload.get("items") or []
     result = plan(
         raw_coupons=payload.get("coupons", []),
-        subtotal_cents=subtotal_cents,
+        cart_items=cart,
         top_k=args.top_k,
         max_stack=args.max_stack,
     )

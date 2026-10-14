@@ -47,7 +47,8 @@ ALIASES = {
 
 _NAME_KEYS = ("name", "mealName", "productName", "title", "dishName", "餐品名称", "名称")
 _CODE_KEYS = ("code", "mealCode", "productCode", "skuId", "id", "餐品编码", "编码")
-_PRICE_KEYS = ("price", "salePrice", "currentPrice", "amount", "价格", "售价")
+# currentPrice 在前：菜单里它才是实际售价，originalPrice 是划线价
+_PRICE_KEYS = ("currentPrice", "salePrice", "price", "amount", "价格", "售价")
 
 RE_PUNCT = re.compile(r"[\s\-_·．.、,，/()（）\[\]【】]+")
 
@@ -69,22 +70,83 @@ def _similarity(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def normalize_menu(raw_menu: Sequence[dict]) -> list[dict]:
+def _price_cents(item: dict) -> int:
+    v = _first(item, _PRICE_KEYS)
+    if v is None:
+        return 0
+    try:
+        return yuan_to_cents(v)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _entry(code: str, item: dict) -> dict | None:
+    name = str(_first(item, _NAME_KEYS) or "").strip()
+    if not name:
+        return None
+    return {
+        "code": str(_first(item, _CODE_KEYS) or code),
+        "name": name,
+        "price_cents": _price_cents(item),
+        "raw": item,
+    }
+
+
+def normalize_menu(raw) -> list[dict]:
+    """把菜单输入归一为 ``[{code, name, price_cents}]``。
+
+    兼容三种真实形态：
+
+    1. **MCP ``query-meals`` 原始响应**（实测格式）::
+
+           {"data": {"meals": {"1100": {"name": "巨无霸", "currentPrice": "25.5"}}}}
+
+       注意 ``data.meals`` 是 **以餐品编码为 key 的字典**，不是数组；
+       且条目内部没有 ``code`` 字段，编码取自 map 的 key。
+       分类 ``data.categories[].meals[]`` 只有 ``code`` 和 ``tags``，没有名称，
+       所以必须以 ``data.meals`` 为准。
+
+    2. **``{code: item}`` 字典**（调用方自行裁剪后的形态）。
+
+    3. **数组** ``[{code, name, price}, ...]``（人工整理或其它数据源）。
+    """
     menu: list[dict] = []
-    for i, raw in enumerate(raw_menu or []):
-        if not isinstance(raw, dict):
-            continue
-        name = str(_first(raw, _NAME_KEYS) or "").strip()
-        if not name:
-            continue
-        menu.append(
-            {
-                "code": str(_first(raw, _CODE_KEYS) or f"item-{i}"),
-                "name": name,
-                "price_cents": yuan_to_cents(_first(raw, _PRICE_KEYS) or 0),
-                "raw": raw,
-            }
-        )
+
+    # 形态 3：数组
+    if isinstance(raw, list):
+        for i, item in enumerate(raw):
+            if isinstance(item, dict):
+                e = _entry(f"item-{i}", item)
+                if e:
+                    menu.append(e)
+        return menu
+
+    if not isinstance(raw, dict):
+        return menu
+
+    # 形态 1：剥掉 data / result 外层
+    node = raw
+    for key in ("data", "result"):
+        nxt = node.get(key)
+        if isinstance(nxt, dict):
+            node = nxt
+
+    meals = node.get("meals")
+    if isinstance(meals, dict):
+        for code, item in meals.items():
+            if isinstance(item, dict):
+                e = _entry(str(code), item)
+                if e:
+                    menu.append(e)
+        if menu:
+            return menu
+
+    # 形态 2：直接是 {code: item}
+    for code, item in raw.items():
+        if isinstance(item, dict):
+            e = _entry(str(code), item)
+            if e:
+                menu.append(e)
     return menu
 
 

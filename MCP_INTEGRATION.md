@@ -36,51 +36,154 @@
 
 ---
 
-## 二、调用流程
+## 二、实测校准结果（2026-10-14 真实联调）
+
+以下结论来自对麦当劳 MCP 的**真实调用**（`storeCode=1950564`，北京建外 SOHO 店），
+不是文档推测。这些细节直接决定了集成代码怎么写，也是本项目最重要的工程产出之一。
+
+### 2.1 金额单位是「分」
+
+`calculate-price` 的返回（节选实测）：
+
+```json
+{ "data": {
+    "originalPrice": 7400, "discount": 0, "price": 7400,
+    "productOriginalPrice": 7400, "productPrice": 7400,
+    "deliveryPrice": 0, "packingPrice": 0, "tablewarePrice": 0,
+    "productList": [
+      {"productCode": "1100", "productName": "巨无霸", "quantity": 2,
+       "originalSubtotal": 5100, "subtotal": 5100}
+    ],
+    "takeWayList": [{"code": "eat-in", "title": "堂食"}, {"code": "take-in-store", "title": "外带"}],
+    "enjoyed": {"amountType": "3", "realDiscount": 5, "balance": 0},
+    "enjoyable": {"amountType": "3", "realDiscount": 5, "balance": 1200}
+}}
+```
+
+- **所有金额字段单位为分**（整数）。展示时除以 100。
+- `data.price` 是应付现价，`data.discount` 是优惠金额，`data.deliveryPrice` / `data.packingPrice` 是费用明细。
+- `data.enjoyed.realDiscount` 的单位是**元**（与其它字段不同），`enjoyable.balance`（门槛差额）单位又是**分**——同一响应里单位不统一，务必逐个确认。
+- 本项目 `from_price.py` 直接透传分，避免二次舍入。
+
+### 2.2 返回格式不统一
+
+| 工具 | 实际返回格式 |
+|---|---|
+| `now-time-info`、`query-nearby-stores`、`query-meals`、`calculate-price`、`query-store-coupons` | JSON |
+| `query-my-coupons`、`available-coupons`、`campaign-calendar` | **Markdown 文本** |
+| `list-nutrition-foods` | 一个包在 JSON 字符串里的 TSV（`[160]{productName,energyKcal,...}:`） |
+
+因此本地脚本只接受**结构化 JSON**，Markdown 由 LLM 先解析归一。
+
+### 2.3 `query-meals` 的菜单是字典而非数组
+
+```json
+{ "data": {
+    "categories": [{"name": "巨无霸\n牛鱼肉堡", "meals": [{"code": "1100", "tags": ["单品"]}]}],
+    "meals": {
+      "1100": {"name": "巨无霸", "currentPrice": "25.5", "originalPrice": "25.5", "canWithOrder": false}
+    }
+}}
+```
+
+- `data.meals` 是**以餐品编码为 key 的字典**。
+- `data.categories[].meals[]` 只有 `code` 和 `tags`，**没有名称**，取名称必须查 `data.meals`。
+- 价格字段为 `currentPrice`（字符串，单位元），划线价是 `originalPrice`。
+- 部分商品带 `discountType`（如「随单购麦金卡优惠」）与 `withOrder`，用不上时忽略即可。
+
+`match_menu.py` 的 `normalize_menu()` 已兼容上述结构，直接把整个响应传进去即可。
+
+### 2.4 优惠券是「按商品绑定」，没有面额与门槛
+
+`query-store-coupons` 的单条券（结构样例，字段名来自实测 schema）：
+
+```json
+{ "title": "中薯条买一送一", "couponId": "CP20261014001", "couponCode": "CC-9F3A21",
+  "tradeDateTime": "2026-10-14 00:00:00 - 2026-10-20 23:59:59",
+  "products": [{"productName": "中薯条", "productCode": "4810"}] }
+```
+
+**券数据里没有 `discountAmount`、也没有 `threshold`。** 这意味着：
+
+- 「用满减门槛做候选剪枝」的常见思路在这里**不成立**。
+- 本项目 `plan_coupons.py` 改为**按 `productCode` 建立券↔商品映射**，
+  产出「券 × 商品」候选，交由 `calculate-price` 试算定夺。
+- 脚本**刻意不预测优惠金额**，避免向用户给出误导性的「预计省 X 元」。
+
+> 实测中该账号 `query-store-coupons` 与 `query-my-coupons` 均返回空，
+> 券链路未能端到端验证，仅按官方 schema 锁定字段结构。
+
+### 2.5 `beCode` 的传递规则（易错）
+
+- `beType=1` 到店自取：`query-nearby-stores` 返回的门店**不含 `beCode`**，后续调用**不传**。
+- `beType=5` 得来速：返回的门店**含 `beCode`**，后续调用**必须传**。
+- `orderType`：到店（含得来速）为 `1`，外送（含麦乐送、团餐）为 `2`。
+- 收藏门店为空时 `searchType=1` 会返回 `code=600050`，需改用 `searchType=2` + `city` + `keyword`。
+
+### 2.6 其它实测细节
+
+- `query-nearby-stores` 返回的门店含 `reservation` 与 `reservationTimeOptions[]`（支持预约时），
+  预约场景需要完整展示，缺失会导致用户无法预约。
+- `query-meals` 的 `storeCode`、`orderType`、`beType` 三者**均为必填**，缺一会失败。
+- `list-nutrition-foods` 是**全量**餐品热量表（约 160 条），与门店菜单无关联，
+  需按名称自行匹配，不能直接用于算价。
+
+---
+
+## 三、调用流程
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│ 阶段 0 · 会话初始化                                          │
-│   now-time-info  → 判定时段；读取组织者的就餐方式（到店/外送）│
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ 阶段 0 · 会话初始化                                                    │
+│   now-time-info → 判定时段；确认就餐方式（到店/外送/得来速/团餐）      │
+└────────────────────────────────────────────────────────────────────────┘
                             ↓
-┌──────────────────────────────────────────────────────────────┐
-│ 阶段 1 · 门店定位                                            │
-│   到店：query-nearby-stores                                  │
-│   外送：delivery-query-addresses → delivery-query-stores     │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ 阶段 1 · 门店定位                                                      │
+│   到店自取：query-nearby-stores(searchType=1, beType=1)                │
+│             └ 若返回 600050（收藏为空）→ searchType=2 + city + keyword │
+│   得来速  ：query-nearby-stores(searchType=2, beType=5) → 取 beCode    │
+│   外送    ：delivery-query-addresses → delivery-query-stores           │
+│   团餐    ：同外送 + query-meal-assistance                             │
+└────────────────────────────────────────────────────────────────────────┘
                             ↓
-┌──────────────────────────────────────────────────────────────┐
-│ 阶段 2 · 报单解析（本地脚本，不消耗 MCP 配额）                │
-│   群聊文本 → parse_orders.py → 结构化报单 JSON               │
-│   query-meals 拉取菜单 → 餐品名模糊匹配 → 餐品编码           │
-│   query-meal-detail 处理套餐替换与个性化备注                 │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ 阶段 2 · 报单解析与菜单匹配（本地脚本，不消耗 MCP 配额）               │
+│   群聊文本 → parse_orders.py → 结构化报单 JSON                         │
+│   query-meals(storeCode, orderType, beType) → data.meals（字典）       │
+│   match_menu.py：口语名 → productCode（整个响应直接传入）              │
+│   query-meal-detail：处理套餐替换与个性化备注（modification.key 规则） │
+└────────────────────────────────────────────────────────────────────────┘
                             ↓
-┌──────────────────────────────────────────────────────────────┐
-│ 阶段 3 · 券组合优化（核心）                                  │
-│   available-coupons / query-store-coupons / query-my-coupons │
-│        → plan_coupons.py 生成候选券组合（本地，不消耗配额）  │
-│   campaign-calendar 补充活动维度                             │
-│        → calculate-price 逐个试算 → 取应付总价最低方案       │
-│   （用户同意时可 auto-bind-coupons 先领券再试算）            │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ 阶段 3 · 券组合优化（核心）                                            │
+│   query-store-coupons（JSON）/ query-my-coupons（Markdown）            │
+│   / available-coupons（Markdown）→ 归一为 JSON                         │
+│   campaign-calendar 补充活动维度                                       │
+│        → plan_coupons.py：按 productCode 建立券↔商品映射，剪枝出候选   │
+│        → calculate-price 逐个试算（挂 couponId/couponCode 到 item）    │
+│        → 取 data.price（分）最低者为最终方案                           │
+│   （用户同意时可 auto-bind-coupons 先领券再试算）                      │
+└────────────────────────────────────────────────────────────────────────┘
                             ↓
-┌──────────────────────────────────────────────────────────────┐
-│ 阶段 4 · 分账（核心）                                        │
-│   split_bill.py：最大余额法精确分摊，保证零尾差              │
-│   产出：分账表 + 收款文案 + 分账卡片 HTML                    │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ 阶段 4 · 分账（核心）                                                  │
+│   from_price.py：算价响应 + 报单归属 → 分账输入（金额全程为分）        │
+│        └ 按商品把小计用最大余额法精确分摊到人 + 金额自检               │
+│   split_bill.py：三种口径精确分摊，Σ(每人应付) ≡ 订单实付              │
+│   产出：分账表 + 收款文案 + 分账卡片 HTML                              │
+└────────────────────────────────────────────────────────────────────────┘
                             ↓
-┌──────────────────────────────────────────────────────────────┐
-│ 阶段 5 · 下单与回填                                          │
-│   create-order（需用户确认）→ query-order 跟踪 → 回填订单号  │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ 阶段 5 · 下单与回填                                                    │
+│   create-order（需用户确认；取餐方式取自 data.takeWayList[]）          │
+│   → query-order 跟踪 → 回填订单号到分账卡片                            │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 三、业务价值
+## 四、业务价值
 
 1. **把 MCP 的能力从"单人点餐"扩展到"多人协作"**
    麦当劳 MCP 的所有点餐类 Tool 都是围绕**单个账户**设计的。而真实场景里，办公室、宿舍、朋友聚会点麦当劳，绝大多数是**一群人凑一单**。本项目补上了"多人 → 单人账户"这最后一公里的编排层：报单收集、合并下单、优惠分摊、账目清算。
@@ -96,7 +199,7 @@
 
 ---
 
-## 四、调用频次与限流
+## 五、调用频次与限流
 
 - 麦当劳 MCP 限流为 **600 次/分钟**。
 - 本项目将**报单解析、券组合候选生成、分账计算**全部放在本地脚本完成，只有必要的菜单/券/试算/下单动作才调用 MCP，单次拼单的 MCP 调用量通常控制在 **20 次以内**，远低于限流阈值。
@@ -104,7 +207,7 @@
 
 ---
 
-## 五、错误处理
+## 六、错误处理
 
 | 错误码 | 含义 | 本项目处理方式 |
 |---|---|---|

@@ -1,0 +1,22 @@
+{
+  "_comment": "真实数据：2026-10-14 调用麦当劳 MCP calculate-price(storeCode=1950564, orderType=1, beType=1, items=巨无霸x2+中薯条x1+可乐x1) 的原始响应。注意金额单位全部是「分」。",
+  "success": true,
+  "code": 200,
+  "message": "请求成功",
+  "data": {
+    "productOriginalPrice": 7400,
+    "productPrice": 7400,
+    "originalPrice": 7400,
+    "discount": 0,
+    "price": 7400,
+    "productList": [
+      { "productCode": "1100", "productName": "巨无霸", "quantity": 2, "originalSubtotal": 5100, "subtotal": 5100 },
+      { "productCode": "4810", "productName": "中薯条", "quantity": 1, "originalSubtotal": 1350, "subtotal": 1350 },
+      { "productCode": "9900008751", "productName": "可乐", "quantity": 1, "originalSubtotal": 950, "subtotal": 950 }
+    ],
+    "takeWayList": [
+      { "code": "eat-in", "title": "堂食", "subtitle": "店内用餐" },
+      { "code": "take-in-store", "title": "外带", "subtitle": "店内自提" }
+    ]
+  }
+}

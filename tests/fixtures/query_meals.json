@@ -1,0 +1,70 @@
+{
+  "_comment": "真实数据：2026-10-14 调用麦当劳 MCP query-meals(storeCode=1950564, orderType=1, beType=1) 的原始响应（已裁剪为代表性条目）。注意 data.meals 是以餐品编码为 key 的字典。",
+  "success": true,
+  "code": 200,
+  "message": "请求成功",
+  "data": {
+    "categories": [
+      {
+        "name": "巨无霸\n牛鱼肉堡",
+        "meals": [
+          { "code": "1100", "tags": ["单品", "100%纯牛肉"] },
+          { "code": "1120", "tags": ["单品", "100%纯牛肉"] },
+          { "code": "1600", "tags": ["单品", "麦香鱼系列"] }
+        ]
+      },
+      {
+        "name": "小食甜品\n/其他",
+        "meals": [
+          { "code": "4810", "tags": ["小食"] },
+          { "code": "9900008751", "tags": ["冷饮"] }
+        ]
+      }
+    ],
+    "meals": {
+      "1100": {
+        "name": "巨无霸",
+        "image": "https://menu-img.mcd.cn/pcm/prod/menu/20260309/product/MS_1100_320.png",
+        "currentPrice": "25.5",
+        "originalPrice": "25.5",
+        "canWithOrder": false
+      },
+      "1120": {
+        "name": "双层吉士汉堡",
+        "image": "https://menu-img.mcd.cn/pcm/prod/menu/20260309/product/MS_1120_320.png",
+        "currentPrice": "23",
+        "originalPrice": "23",
+        "canWithOrder": false
+      },
+      "1600": {
+        "name": "麦香鱼",
+        "image": "https://menu-img.mcd.cn/pcm/prod/menu/20260101/product/MS_1600_320.png",
+        "currentPrice": "22.5",
+        "originalPrice": "22.5",
+        "canWithOrder": false
+      },
+      "4810": {
+        "name": "薯条",
+        "image": "https://menu-img.mcd.cn/pcm/prod/menu/20250523/product/MS_G4810_320.png",
+        "currentPrice": "13.5",
+        "originalPrice": "13.5",
+        "canWithOrder": false
+      },
+      "9900008751": {
+        "name": "可乐",
+        "image": "https://menu-img.mcd.cn/pcm/prod/menu/ProductPool/product/MS_9900008751_320.gif",
+        "currentPrice": "9.5",
+        "originalPrice": "9.5",
+        "canWithOrder": false
+      },
+      "9900016073": {
+        "name": "龙焰鸡腿堡三件套",
+        "image": "https://menu-img.mcd.cn/pcm/prod/menu/ProductPool/product/MS_9900016073_320.png",
+        "currentPrice": "26.9",
+        "originalPrice": "47.5",
+        "canWithOrder": false
+      }
+    },
+    "frequent": {}
+  }
+}

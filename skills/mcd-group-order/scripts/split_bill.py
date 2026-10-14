@@ -138,24 +138,51 @@ def allocate_capped(
 # --------------------------------------------------------------------------- #
 @dataclass
 class LineItem:
-    """一条商品行。"""
+    """一条商品行。
+
+    ``subtotal_override_cents`` 用于**精确小计**场景：当单价不能被数量整除
+    （例如「2 个巨无霸共 51.00 元」拆给两个人各 1 个，每人 25.50 元这种能整除，
+    但「3 个共 100.00 元」就不能），直接用 MCP 返回的小计更安全。
+    """
 
     person: str
     name: str
     unit_price_cents: int
     qty: int = 1
+    subtotal_override_cents: int | None = None
 
     @property
     def subtotal_cents(self) -> int:
+        if self.subtotal_override_cents is not None:
+            return self.subtotal_override_cents
         return self.unit_price_cents * self.qty
 
     @classmethod
     def from_dict(cls, d: dict) -> "LineItem":
+        # 支持三种计价方式（优先级从高到低）：
+        #   subtotal_cents   —— 精确小计（分），来自 calculate-price 的 originalSubtotal
+        #   unit_price_cents —— 单价（分），MCP 原始单位
+        #   unit_price       —— 单价（元），人工录入 / 菜单 currentPrice
+        qty = int(d.get("qty", d.get("quantity", 1)) or 1)
+        if d.get("subtotal_cents") is not None:
+            sub = int(d["subtotal_cents"])
+            unit = int(round(sub / qty)) if qty else sub
+            return cls(
+                person=str(d["person"]).strip(),
+                name=str(d.get("name", "")).strip(),
+                unit_price_cents=unit,
+                qty=qty,
+                subtotal_override_cents=sub,
+            )
+        if d.get("unit_price_cents") is not None:
+            unit = int(d["unit_price_cents"])
+        else:
+            unit = yuan_to_cents(d.get("unit_price", d.get("price", 0)))
         return cls(
             person=str(d["person"]).strip(),
             name=str(d.get("name", "")).strip(),
-            unit_price_cents=yuan_to_cents(d.get("unit_price", d.get("price", 0))),
-            qty=int(d.get("qty", d.get("quantity", 1)) or 1),
+            unit_price_cents=unit,
+            qty=qty,
         )
 
 
@@ -431,6 +458,17 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _amount(payload: dict, cents_key: str, yuan_key: str, default: int = 0) -> int:
+    """优先读取「分」字段，其次读取「元」字段。
+
+    麦当劳 MCP 的 ``calculate-price`` 返回的金额单位是**分**，
+    而人工录入的账单通常是元。两者都支持，避免调用方来回换算。
+    """
+    if payload.get(cents_key) is not None:
+        return int(payload[cents_key])
+    return yuan_to_cents(payload.get(yuan_key, default))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
@@ -443,9 +481,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     items = [LineItem.from_dict(d) for d in payload.get("items", [])]
     result = split_bill(
         items=items,
-        discount_cents=yuan_to_cents(payload.get("discount", 0)),
-        delivery_fee_cents=yuan_to_cents(payload.get("delivery_fee", 0)),
-        packaging_fee_cents=yuan_to_cents(payload.get("packaging_fee", 0)),
+        discount_cents=_amount(payload, "discount_cents", "discount"),
+        delivery_fee_cents=_amount(payload, "delivery_fee_cents", "delivery_fee"),
+        packaging_fee_cents=_amount(payload, "packaging_fee_cents", "packaging_fee"),
         discount_policy=args.policy or payload.get("discount_policy", "proportional"),
         fee_policy=args.fee_policy or payload.get("fee_policy", "equal"),
         payer=args.payer or payload.get("payer"),
