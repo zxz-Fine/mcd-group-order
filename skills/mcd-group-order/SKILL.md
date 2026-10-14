@@ -210,7 +210,7 @@ python scripts/assign_any.py -i <matched.json> --menu <menu.json> --kind burger
   · 小赵 → 麦香鱼 ¥22.50
   · 小赵 → 麦香鸡 ¥18.00
 共 5 种口味，无重复。
-巨无霸 已按明确点单保留，未参与指派。
+（巨无霸已按明确点单保留，未参与指派。）
 ```
 
 用户确认后才继续。若 `warnings` 提示「候选数量少于随便人数」或「忌口未能满足」，

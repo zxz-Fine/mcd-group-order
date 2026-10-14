@@ -59,7 +59,7 @@ def _build_confirm(assignments: list[dict], label: str, excluded: list[dict]) ->
             lines.append("口味有重复（候选不足），如需更换请直接说。")
     if excluded:
         lines.append(
-            f"{'、'.join(m['name'] for m in excluded)} 已按明确点单保留，未参与指派。"
+            f"（{'、'.join(m['name'] for m in excluded)}已按明确点单保留，未参与指派。）"
         )
     return "\n".join(lines)
 
