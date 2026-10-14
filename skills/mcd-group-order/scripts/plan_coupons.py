@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from typing import Sequence
@@ -50,6 +51,28 @@ _PRODUCT_LIST_KEYS = ("products", "productList", "applicableProducts", "items")
 # 面额/门槛为**可选**增强字段：真实券数据通常没有
 _AMOUNT_KEYS = ("discountAmount", "amount", "value", "faceValue", "reduceAmount")
 _THRESHOLD_KEYS = ("threshold", "minAmount", "useCondition", "limitAmount")
+
+# 券名/券商品名里常见的**营销后缀**。这些词描述的是优惠形式而非商品本体，
+# 归一化时必须剥离，否则「中薯条买一送一」永远对不上购物车里的「中薯条」。
+_MARKETING_WORDS = (
+    "买一送一", "第二份半价", "第二杯半价", "第二份1元", "第二杯1元",
+    "半价", "特价", "特惠", "优惠券", "优惠", "折扣", "立减", "限时", "免费", "券",
+)
+_RE_PRICE_TOKEN = re.compile(r"\d+(?:\.\d+)?\s*元")
+_RE_NOISE = re.compile(r"[\s\-—–·、,，。.（）()【】\[\]/|]+")
+
+
+def _norm_name(s: str) -> str:
+    """把商品名归一化为可比较的形态：剥离价格数字、营销词、符号。
+
+    例：``"9.9元中杯冰美式"`` → ``"中杯冰美式"``；``"中薯条买一送一"`` → ``"中薯条"``。
+    """
+    s = str(s or "")
+    s = _RE_PRICE_TOKEN.sub("", s)
+    s = s.replace("™", "").replace("®", "").replace("©", "")
+    for w in _MARKETING_WORDS:
+        s = s.replace(w, "")
+    return _RE_NOISE.sub("", s).strip().lower()
 
 
 @dataclass
@@ -157,19 +180,89 @@ def normalize_coupons(raw_list) -> tuple[list[Coupon], list[dict]]:
     return coupons, skipped
 
 
+def match_coupon_products(coupon: Coupon, cart_items: Sequence[dict]) -> list[dict]:
+    """把一张券的适用商品映射到购物车里的真实条目。
+
+    麦当劳的**券商品编码**（如 ``9900012387``）与**菜单/购物车商品编码**（如 ``4810``）
+    经常对不上——前者是「活动虚拟商品」，后者是「实际餐品」。实测确认：
+    「中薯条买一送一」的券编码是 9900012387，而菜单里中薯条是 4810。
+    只按 productCode 精确匹配会把这类券全部误判为「本单不可用」。
+
+    因此采用三级匹配，逐级降信：
+
+    ==============  ============================================  ======
+    匹配方式          说明                                          置信
+    ==============  ============================================  ======
+    ``exact_code``    券的 productCode == 购物车 productCode       1.0
+    ``name_exact``    归一化后商品名完全相等                         0.9
+    ``name_contains`` 归一化后一方包含另一方（券名常带规格后缀）      0.7
+    ==============  ============================================  ======
+
+    返回 ``[{productCode, name, couponProductCode, couponProductName, match, confidence}]``：
+    ``productCode`` 是**购物车里的真实编码**（下单要用它），
+    ``couponProductCode`` 是券里的编码（``calculate-price`` 试算时可能需要它）。
+    """
+    matches: list[dict] = []
+    for it in cart_items:
+        if not isinstance(it, dict):
+            continue
+        code = str(it.get("productCode") or it.get("code") or "")
+        name = str(it.get("name") or it.get("productName") or "")
+        if not code:
+            continue
+        best: dict | None = None
+        for cp in coupon.products:
+            if not isinstance(cp, dict):
+                continue
+            ccode = str(cp.get("productCode") or cp.get("code") or "")
+            cname = str(cp.get("productName") or cp.get("name") or "")
+            conf, how = 0.0, ""
+            if ccode and ccode == code:
+                conf, how = 1.0, "exact_code"
+            elif cname and name:
+                a, b = _norm_name(cname), _norm_name(name)
+                if a and a == b:
+                    conf, how = 0.9, "name_exact"
+                elif a and b and len(min(a, b, key=len)) >= 2 and (a in b or b in a):
+                    conf, how = 0.7, "name_contains"
+            if conf > (best or {}).get("confidence", 0.0):
+                best = {
+                    "productCode": code,
+                    "name": name,
+                    "couponProductCode": ccode,
+                    "couponProductName": cname,
+                    "same_code": bool(ccode and ccode == code),
+                    "match": how,
+                    "confidence": conf,
+                }
+        if best:
+            matches.append(best)
+    return matches
+
+
 def plan(
     raw_coupons,
     cart_items: Sequence[dict],
     top_k: int = 8,
-    max_stack: int = 2,
+    max_stack: int = 1,
 ) -> dict:
-    """生成券组合候选。
+    """生成券候选。
 
     :param cart_items: ``[{productCode, name, unit_price_cents, qty, person}]``
-    :param max_stack: 单个候选里最多同时使用几张券（真实场景多为 1 张）
+    :param max_stack: **强制为 1**。实测 ``calculate-price`` 一次传 2 张券会直接返回
+        ``code=600022 "暂不支持多张券使用"``——**麦当劳不支持叠加券**，
+        所以不存在「券组合优化」，只有「单券择优」。传 >1 会被降为 1 并告警。
     """
     coupons, skipped = normalize_coupons(raw_coupons)
     warnings: list[str] = []
+
+    # 实测：calculate-price 一次只接受 1 张券，叠加会直接报错
+    if max_stack > 1:
+        warnings.append(
+            f"max_stack={max_stack} 已强制降为 1：实测 calculate-price 一次只支持 1 张券"
+            "（传 2 张返回 code=600022「暂不支持多张券使用」），麦当劳不存在券叠加。"
+        )
+        max_stack = 1
 
     # productCode -> 该编码在购物车中的原始小计（分）
     cart_value: dict[str, int] = {}
@@ -194,8 +287,13 @@ def plan(
     unusable: list[dict] = []
 
     for c in coupons:
-        covered = [code for code in c.product_codes if code in cart_value]
-        if not covered:
+        if not c.products:
+            unusable.append(
+                {**c.to_dict(), "reason": "该券未给出适用商品，无法自动判断，请人工确认"}
+            )
+            continue
+        matches = match_coupon_products(c, cart_items)
+        if not matches:
             unusable.append(
                 {
                     **c.to_dict(),
@@ -204,21 +302,47 @@ def plan(
                 }
             )
             continue
+        covered = [m["productCode"] for m in matches]
         usable.append(
             {
                 "coupon": c,
                 "covered_codes": covered,
-                "covered_value_cents": sum(cart_value[x] for x in covered),
+                "matches": matches,
+                "covered_value_cents": sum(cart_value.get(x, 0) for x in covered),
+                "confidence": min(m["confidence"] for m in matches),
             }
         )
 
     # 覆盖金额降序：覆盖越贵的商品越可能省得多（弱启发式，仅用于排序与剪枝）
-    usable.sort(key=lambda x: -x["covered_value_cents"])
+    usable.sort(key=lambda x: (-x["covered_value_cents"], -x["confidence"]))
+
+    # 名称推断出来的匹配必须显式告警，提醒 LLM 用 calculate-price 复核
+    inferred = [u for u in usable if u["confidence"] < 1.0]
+    if inferred:
+        warnings.append(
+            "有 {} 张券未能按 productCode 精确命中，已用商品名推断匹配"
+            "（见 usable[].matched_cart_items），请务必用 calculate-price 试算确认。".format(
+                len(inferred)
+            )
+        )
+
+    # 券商品编码 ≠ 购物车编码：该券代表的是「券专属商品形态」，用它会改变购物车内容
+    replacing = [u for u in usable if any(not m["same_code"] for m in u["matches"])]
+    if replacing:
+        warnings.append(
+            "有 {} 张券的商品编码与购物车不一致（券用的是活动虚拟商品编码，如 99xxxxxxxx）。"
+            "这类券**必须**用 apply[].productCode（券编码）去算价，"
+            "而它对应的是「券的商品形态」——例如「中薯条买一送一」= 2 份中薯条按 1 份计价，"
+            "与用户报单的「中薯条 x1」并不是同一件事，下单前务必与用户确认。".format(
+                len(replacing)
+            )
+        )
 
     # ---- 候选生成 ---- #
+    # 每个候选 = 1 张券，外加一个「不使用券」基线。
+    # **没有「券叠加」候选**——实测 calculate-price 一次只接受 1 张券。
     candidates: list[dict] = [{"label": "不使用优惠券（基线）", "apply": [], "_v": 0, "_n": 0}]
 
-    # 1) 单券候选：全部保留，一张都不漏
     for u in usable:
         c: Coupon = u["coupon"]
         candidates.append(
@@ -226,43 +350,21 @@ def plan(
                 "label": c.name,
                 "apply": [
                     {
-                        "productCode": code,
+                        # ⚠️ 必须传**券自己的** productCode。实测：把「中薯条买一送一」
+                        # 挂到菜单里的中薯条(4810) 上 → 600012「促销规则不支持该商品」；
+                        # 挂到券编码(9900012387) 上 → 成功。券商品编码不是别名，是真实入参。
+                        "productCode": m["couponProductCode"] or m["productCode"],
+                        "cartProductCode": m["productCode"],
                         "couponId": c.cid,
                         "couponCode": c.codes[0] if c.codes else "",
+                        "match": m["match"],
                     }
-                    for code in u["covered_codes"]
+                    for m in u["matches"]
                 ],
                 "_v": u["covered_value_cents"],
                 "_n": 1,
             }
         )
-
-    # 2) 贪心叠加：券互不覆盖商品时才叠加
-    if max_stack >= 2 and len(usable) >= 2:
-        used: set[str] = set()
-        combo: list[dict] = []
-        labels: list[str] = []
-        value = 0
-        for u in usable:
-            c: Coupon = u["coupon"]
-            if used & set(u["covered_codes"]):
-                continue
-            used |= set(u["covered_codes"])
-            value += u["covered_value_cents"]
-            labels.append(c.name)
-            combo.append(
-                {
-                    "productCode": u["covered_codes"][0],
-                    "couponId": c.cid,
-                    "couponCode": c.codes[0] if c.codes else "",
-                }
-            )
-            if len(combo) >= max_stack:
-                break
-        if len(combo) >= 2:
-            candidates.append(
-                {"label": " + ".join(labels), "apply": combo, "_v": value, "_n": len(combo)}
-            )
 
     if len(candidates) > MAX_COMBOS:
         warnings.append(f"候选数超过上限 {MAX_COMBOS}，已截断。")
@@ -291,15 +393,26 @@ def plan(
     return {
         "cart_value": cents_to_yuan(sum(cart_value.values())),
         "coupon_total": len(coupons),
-        "usable": [u["coupon"].to_dict() for u in usable],
+        "usable": [
+            {
+                **u["coupon"].to_dict(),
+                "matched_cart_items": u["matches"],
+                "confidence": u["confidence"],
+            }
+            for u in usable
+        ],
         "unusable": unusable,
         "candidates": out,
         "skipped": skipped,
         "warnings": warnings,
         "next_step": (
-            "对 candidates 中的每个组合，把 apply 里的 couponId/couponCode 挂到对应 "
-            "productCode 上调用 MCP 工具 calculate-price 试算，取 data.price（单位：分）"
-            "最低者为最终方案。注意：本脚本不预测优惠金额，一切以 calculate-price 为准。"
+            "对 candidates 中每个候选（含基线），把 apply[].productCode + couponId + couponCode "
+            "组装进 calculate-price 的 items[] 实际调用试算，取 data.price（单位：分）最低者为最终方案。"
+            "三条硬规则：① 本脚本不预测优惠金额，一切以 calculate-price 为准；"
+            "② 一次只能挂 1 张券，传 2 张会返回 code=600022「暂不支持多张券使用」；"
+            "③ apply[].productCode 是**券的商品编码**（算价必须用它），"
+            "apply[].cartProductCode 是购物车商品编码（分账归属用它），"
+            "两者不同时说明该券对应券专属商品形态，需与用户确认。"
         ),
     }
 

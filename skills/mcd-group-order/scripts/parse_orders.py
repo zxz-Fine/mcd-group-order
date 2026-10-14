@@ -14,6 +14,8 @@
     @赵六 板烧鸡腿堡 不要生菜 少冰可乐
     我 1+1随心配
     【12:30】@张三 双层吉士汉堡×2
+    @周七 随便
+    小李：都行，你看着办
 
 解析规则
 --------
@@ -21,6 +23,9 @@
 - **数量**：``x2`` ``×2`` ``*2`` ``2个`` ``2份`` ``2杯``，以及中文数字 ``两个``。
 - **备注**：``不要X`` ``去X`` ``少X`` ``加X`` ``多X`` ``换X`` ``无X``。
 - **分隔**：``、`` ``,`` ``，`` ``/`` ``+``（数字之间的 ``+`` 不切，保护 ``1+1随心配``）。
+- **泛称意图**：``随便`` / ``都行`` / ``你看着办`` 这类没指定餐品的报单，
+  会被打上 ``intent: "any"`` 标记，交由 ``assign_any.py`` 指派为具体汉堡
+  （多人时会尽量指派不同口味）。注意 ``随便来个巨无霸`` **不算**泛称——它已指定餐品。
 
 本脚本**不联网、不消耗 MCP 配额**，纯本地文本处理。
 """
@@ -34,6 +39,33 @@ import sys
 from typing import Sequence
 
 ME = "__ME__"
+
+# 「随便」类意图：报单人没指定具体餐品，由系统代为指派（默认汉堡）。
+# 采用**受控词表**，且要求整段（去掉「来个」前缀与「吧/了」语气词后）就是这个词——
+# 「随便来个巨无霸」已经指定了餐品，不算泛称。
+ANY = "any"
+_ANY_WORDS = {
+    "随便", "都行", "都可以", "随意", "无所谓", "你定", "你们定", "你看着办",
+    "看着办", "看着点", "不挑", "啥都行", "什么都行", "吃啥都行", "喝啥都行",
+    "任意", "听你的", "听你们的", "随你", "都随你", "随你们", "我不挑",
+    "都ok", "都okay", "都ok的", "你选", "你们选", "你帮我选", "帮我选",
+    "来啥吃啥", "给啥吃啥", "安排", "你安排", "随便安排",
+}
+_RE_ANY_LEAD = re.compile(r"^(?:来个|来一个|来份|来一份|要个|要一个|点个|点一个)")
+_RE_ANY_TAIL = re.compile(r"(?:吧|了|呗|呀|啊|哈|哦|嘛|咯|的|来|点|一个|个)+$")
+
+
+def _detect_intent(name: str) -> str | None:
+    """识别「随便」类泛称报单，返回意图标记或 None。
+
+    ``随便`` / ``都行`` / ``你看着办`` → ``"any"``；``随便来个巨无霸`` → ``None``（已指定餐品）。
+    """
+    t = str(name or "").strip().strip(" .。！!~～")
+    t = _RE_ANY_LEAD.sub("", t).strip()
+    t = _RE_ANY_TAIL.sub("", t).strip()
+    if t.lower() in _ANY_WORDS:
+        return ANY
+    return None
 
 # 时间戳 / 系统消息，先剔除
 RE_TS_BRACKET = re.compile(r"^\s*[\[\(【]?\s*\d{1,2}:\d{2}(?::\d{2})?\s*[\]\)】]?\s*")
@@ -53,7 +85,9 @@ RE_QTY_PREFIX = re.compile(r"^\s*(?:(\d+)\s*(?:个|份|杯|盒|套|块|只|支|�
 #   1) 裸「无」会把「巨无霸」拆成「巨」+备注「无霸」——故不收录；
 #   2) 泛化 `去[^\s]{1,3}` 会把「去冰可乐」整串吞掉——故限定为「去」+ 词表内元素。
 _NOTE_ING = (
+    # 长词在前，避免「不要牛肉」被切成「不要牛」+「肉」
     "番茄酱|酸黄瓜|沙拉酱|生菜|洋葱|香菜|吸管|餐具|芝士"
+    "|牛肉|牛|鸡肉|鸡|鱼|猪|虾"
     "|冰|糖|酱|菜|葱|盐|辣|奶|油|皮|盖"
 )
 RE_NOTE = re.compile(
@@ -194,7 +228,28 @@ def parse_line(line: str) -> dict | None:
         if not RE_MEANINGFUL.search(name):
             continue
 
-        items.append({"name": name, "qty": qty, "note": note})
+        item = {"name": name, "qty": qty, "note": note}
+        intent = _detect_intent(name)
+        if intent:
+            item["intent"] = intent
+        items.append(item)
+
+    # 同一行里连续的泛称（「都行，你看着办」）语义上是**一次**「随便」，
+    # 不合并会被指派成两个汉堡。qty 取较大者（「随便x2，都行」→ 2）。
+    merged_items: list[dict] = []
+    for it in items:
+        if (
+            merged_items
+            and it.get("intent")
+            and merged_items[-1].get("intent") == it["intent"]
+        ):
+            prev = merged_items[-1]
+            prev["qty"] = max(int(prev.get("qty") or 1), int(it.get("qty") or 1))
+            if it.get("note"):
+                prev["note"] = (prev.get("note", "") + " " + it["note"]).strip()
+            continue
+        merged_items.append(it)
+    items = merged_items
 
     if not items:
         return None
@@ -236,10 +291,26 @@ def parse_orders(text: str) -> dict:
             if not it["name"]:
                 warnings.append(f"{p} 的一条报单未能解析出餐品名，请人工确认。")
 
+    any_items = [
+        (v["person"], it)
+        for v in merged.values()
+        for it in v["items"]
+        if it.get("intent") == ANY
+    ]
+    if any_items:
+        who = "、".join(sorted({p for p, _ in any_items if p != ME})[:6])
+        warnings.append(
+            f"检测到 {len(any_items)} 项「随便」类报单"
+            + (f"（{who}）" if who else "")
+            + "，未指定具体餐品。下一步请用 assign_any.py 指派为具体汉堡"
+            "（多人时会尽量指派不同口味），并把指派结果告知用户确认。"
+        )
+
     return {
         "people": order_keys,
         "count": len(order_keys),
         "item_count": sum(len(v["items"]) for v in merged.values()),
+        "any_count": len(any_items),
         "orders": [merged[k] for k in order_keys],
         "warnings": warnings,
     }
@@ -273,7 +344,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             person = "（我）" if o["person"] == ME else o["person"]
             for it in o["items"]:
                 note = f"  [{it['note']}]" if it["note"] else ""
-                print(f"  {person:<10} {it['name']} ×{it['qty']}{note}")
+                tag = "  ← 泛称，待指派" if it.get("intent") else ""
+                print(f"  {person:<10} {it['name']} ×{it['qty']}{note}{tag}")
         for w in result["warnings"]:
             print(f"  ⚠ {w}")
     else:

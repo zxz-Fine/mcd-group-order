@@ -88,6 +88,8 @@ def _entry(code: str, item: dict) -> dict | None:
         "code": str(_first(item, _CODE_KEYS) or code),
         "name": name,
         "price_cents": _price_cents(item),
+        "category": "",
+        "tags": [],
         "raw": item,
     }
 
@@ -131,12 +133,28 @@ def normalize_menu(raw) -> list[dict]:
         if isinstance(nxt, dict):
             node = nxt
 
+    # 分类信息只存在于 data.categories[].meals[]，data.meals 里没有，需先建映射。
+    # 「巨无霸」这类名字里没有「堡」字，只能靠分类名「巨无霸 牛鱼肉堡」认出来。
+    cat_of: dict[str, tuple[str, list]] = {}
+    categories = node.get("categories")
+    if isinstance(categories, list):
+        for c in categories:
+            if not isinstance(c, dict):
+                continue
+            cname = str(c.get("name") or "").replace("\n", " ").strip()
+            for cm in c.get("meals") or []:
+                if isinstance(cm, dict) and cm.get("code") is not None:
+                    cat_of[str(cm["code"])] = (cname, list(cm.get("tags") or []))
+
     meals = node.get("meals")
     if isinstance(meals, dict):
         for code, item in meals.items():
             if isinstance(item, dict):
                 e = _entry(str(code), item)
                 if e:
+                    cname, tags = cat_of.get(str(code), ("", []))
+                    e["category"] = cname
+                    e["tags"] = tags or list(item.get("tags") or [])
                     menu.append(e)
         if menu:
             return menu
@@ -148,6 +166,30 @@ def normalize_menu(raw) -> list[dict]:
             if e:
                 menu.append(e)
     return menu
+
+
+# ---- 汉堡识别（供 assign_any.py 指派「随便」类报单） ---- #
+# **分类名优先**：真实菜单里「巨无霸」被放在「巨无霸 牛鱼肉堡」分类下，
+# 名字里并没有「堡」字，只靠名称关键词会漏掉它。
+BURGER_CATEGORY_HINT = "堡"
+BURGER_NAME_HINTS = ("堡", "巨无霸", "麦香鸡", "麦香鱼", "安格斯", "培根")
+# 套餐/组合不算「一个汉堡」，指派时应排除
+_COMBO_HINTS = ("套餐", "三件套", "四件套", "五件套", "组合", "分享", "双人", "多人", "家庭", "桶")
+
+
+def is_burger(entry: dict) -> bool:
+    """判断菜单项是否为可单独指的汉堡单品。"""
+    name = str(entry.get("name") or "")
+    if any(h in name for h in _COMBO_HINTS):
+        return False
+    if BURGER_CATEGORY_HINT in str(entry.get("category") or ""):
+        return True
+    return any(h in name for h in BURGER_NAME_HINTS)
+
+
+def hamburger_candidates(menu: Sequence[dict]) -> list[dict]:
+    """从菜单里筛出汉堡候选，保持菜单原有顺序（确定性，便于复现指派结果）。"""
+    return [m for m in menu if is_burger(m)]
 
 
 def match_one(query: str, menu: Sequence[dict], threshold: float = 0.6) -> dict:
@@ -200,6 +242,24 @@ def match_orders(orders: Sequence[dict], raw_menu: Sequence[dict], threshold: fl
     for o in orders:
         person = o.get("person", "")
         for it in o.get("items", []):
+            # 「随便」类泛称没有具体餐品，硬匹配只会误伤 → 直接转交 assign_any.py
+            if it.get("intent"):
+                entry = {
+                    "person": person,
+                    "query": it.get("name", ""),
+                    "qty": it.get("qty", 1),
+                    "note": it.get("note", ""),
+                    "intent": it["intent"],
+                    "matched_code": None,
+                    "matched_name": None,
+                    "unit_price": "0.00",
+                    "confidence": 0.0,
+                    "reason": f"报单为「{it.get('name', '')}」（泛称/不挑），需由 assign_any 指派",
+                }
+                results.append(entry)
+                unmatched.append(entry)
+                continue
+
             r = match_one(it.get("name", ""), menu, threshold)
             entry = {
                 "person": person,

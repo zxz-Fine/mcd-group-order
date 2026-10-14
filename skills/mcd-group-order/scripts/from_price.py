@@ -58,27 +58,43 @@ def _unwrap(payload: dict) -> dict:
     return node
 
 
-def convert(price_payload: dict, orders: Sequence[dict], **overrides) -> dict:
-    """把算价响应 + 报单归属转成 split_bill 输入。"""
+def convert(
+    price_payload: dict,
+    orders: Sequence[dict],
+    code_aliases: dict | None = None,
+    **overrides,
+) -> dict:
+    """把算价响应 + 报单归属转成 split_bill 输入。
+
+    :param code_aliases: 可选，``{算价返回的商品编码: 报单里的商品编码}``。
+        挂了券之后，``calculate-price`` 会把券商品按**券自己的编码**返回
+        （如「中薯条买一送一」返回 ``9900012387``），而报单里写的是购物车编码
+        （中薯条 ``4810``）。传 ``{"9900012387": "4810"}`` 即可让归属自动接上，
+        否则该商品会被判为「无归属人」并走占位人名。
+    """
     data = _unwrap(price_payload)
 
     product_list = data.get("productList") or []
     if not isinstance(product_list, list) or not product_list:
         raise ValueError("算价响应里没有 productList，无法转换")
 
+    aliases = {str(k): str(v) for k, v in (code_aliases or {}).items()}
+
     # productCode -> {name, originalSubtotal, subtotal, quantity}
     catalog: dict[str, dict] = {}
     for p in product_list:
         if not isinstance(p, dict):
             continue
-        code = str(p.get("productCode") or "")
-        if not code:
+        raw_code = str(p.get("productCode") or "")
+        if not raw_code:
             continue
+        code = aliases.get(raw_code, raw_code)
         catalog[code] = {
             "name": str(p.get("productName") or ""),
             "original_subtotal": int(p.get("originalSubtotal") or 0),
             "subtotal": int(p.get("subtotal") or 0),
             "quantity": int(p.get("quantity") or 1) or 1,
+            "_coupon_product_code": raw_code if code != raw_code else "",
         }
 
     # 按商品编码聚合报单
@@ -92,6 +108,17 @@ def convert(price_payload: dict, orders: Sequence[dict], **overrides) -> dict:
         )
 
     warnings: list[str] = []
+
+    # 发生了券商品 → 购物车商品映射时，必须让用户知道归属是按别名接上的
+    mapped = [(k, v) for k, v in catalog.items() if v["_coupon_product_code"]]
+    if mapped:
+        warnings.append(
+            "以下商品是**券商品**（算价按券自己的编码返回），已按 code_aliases 归到购物车商品："
+            + "、".join(f"{v['name']}({v['_coupon_product_code']}→{k})" for k, v in mapped)
+            + "。券商品常是「多份」形态（如买一送一 = 2 份），归属人应是实际拿到它的人，"
+            "请人工确认。"
+        )
+
     items: list[dict] = []
 
     for code, cat in catalog.items():
@@ -168,6 +195,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--discount-policy", help="分账口径：proportional / equal / owner")
     p.add_argument("--fee-policy", help="费用口径：equal / proportional")
     p.add_argument("--discount-owner", help="owner 口径下独享优惠的人")
+    p.add_argument(
+        "--code-alias",
+        action="append",
+        default=[],
+        metavar="券编码=购物车编码",
+        help="券商品编码 → 购物车商品编码的映射，可重复；"
+        "例如 --code-alias 9900012387=4810（把「中薯条买一送一」归到中薯条）",
+    )
     return p
 
 
@@ -181,9 +216,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if isinstance(orders, dict):
         orders = orders.get("orders") or orders.get("items") or []
 
+    aliases: dict[str, str] = {}
+    for pair in args.code_alias:
+        if "=" in pair:
+            k, v = pair.split("=", 1)
+            if k.strip() and v.strip():
+                aliases[k.strip()] = v.strip()
+
     bill = convert(
         price_payload,
         orders,
+        code_aliases=aliases,
         payer=args.payer,
         discount_policy=args.discount_policy,
         fee_policy=args.fee_policy,

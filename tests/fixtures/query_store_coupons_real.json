@@ -1,0 +1,37 @@
+{
+  "_comment": "2026-10-14 真实联调返回（storeCode=1950564, orderType=1, beType=1）。关键点：券的 products[].productCode 是「活动虚拟商品编码」（9900012387），与菜单里的实际餐品编码（中薯条 4810）并不一致。",
+  "success": true,
+  "code": 200,
+  "data": [
+    {
+      "title": "中薯条买一送一",
+      "couponId": "8692944B045928451618BFF22F535D2A",
+      "couponCode": "MCD601CJ080F091PW7090",
+      "tradeDateTime": "2026-10-12 10:30:00-2026-10-16 23:59:59",
+      "products": [
+        { "productCode": "9900012387", "productName": "中薯条买一送一" }
+      ],
+      "promotionId": "112458028"
+    },
+    {
+      "title": "王牌小食拼",
+      "couponId": "E05F6BFB4BAFAA5DB44B233583BFE711",
+      "couponCode": "MCD690Z11950CJF9P0080",
+      "tradeDateTime": "2026-10-12 10:30:00-2026-10-16 23:59:59",
+      "products": [
+        { "productCode": "9900016371", "productName": "王牌小食拼" }
+      ],
+      "promotionId": "112458029"
+    },
+    {
+      "title": "9.9元中杯冰美式",
+      "couponId": "264B97DBE02BE6CF996AA6914151C4A9",
+      "couponCode": "MCD67J0F1E0P100945609",
+      "tradeDateTime": "2026-10-14 00:00:00-2026-10-20 23:59:59",
+      "products": [
+        { "productCode": "507411", "productName": "麦咖啡™冰美式中杯" }
+      ],
+      "promotionId": "112023002"
+    }
+  ]
+}
