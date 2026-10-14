@@ -8,6 +8,9 @@ venv/
 out/
 *.local.html
 
+# 演示动图的中间帧（由 demo/make_gif.py 生成，不入库）
+demo/frames/
+
 # 敏感信息：真实 Token 一律不得入库
 .env
 *.token

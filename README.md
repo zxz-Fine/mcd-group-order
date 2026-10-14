@@ -14,7 +14,9 @@
 
 </div>
 
-![分账卡片示例](examples/sample_card.png)
+![演示：粘贴群聊记录 → 出分账卡片](demo/demo.gif)
+
+<p align="center"><sub>粘贴群聊记录 → 解析报单 → 券组合试算 → 精确分账 → 生成卡片（完整流程约 9 秒）</sub></p>
 
 ---
 
@@ -59,7 +61,7 @@
 ### 3. 安装技能
 
 ```bash
-git clone https://github.com/<your-name>/mcd-group-order.git
+git clone https://github.com/zxz-Fine/mcd-group-order.git
 cp -r mcd-group-order/skills/mcd-group-order ~/.workbuddy-ai/skills/
 ```
 

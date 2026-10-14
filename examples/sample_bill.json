@@ -1,7 +1,7 @@
 {
-  "note": "示例数据：5 人办公室拼单，使用「满 100 减 20」券 + 麦乐送配送费 9 元。",
+  "note": "示例数据：5 人办公室拼单，使用「满 150 减 30」券 + 麦乐送配送费 9 元。",
   "payer": "张三",
-  "discount": 20.0,
+  "discount": 30.0,
   "delivery_fee": 9.0,
   "packaging_fee": 0,
   "discount_policy": "proportional",

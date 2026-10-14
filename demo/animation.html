@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 900px; height: 700px; overflow: hidden;
+    background: #FAF7F2;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: #1F1F1F;
+  }
+  .stage { position: relative; width: 900px; height: 700px; }
+  .scene { position: absolute; inset: 0; }
+
+  /* ---------- 通用 ---------- */
+  .caption {
+    position: absolute; left: 0; right: 0; bottom: 34px;
+    text-align: center; font-size: 15px; color: #8C8C8C; letter-spacing: .3px;
+  }
+  .caption b { color: #DA291C; font-weight: 600; }
+
+  /* ---------- 场景 1：群聊 ---------- */
+  #s1 { display: flex; align-items: center; justify-content: center; }
+  .chat {
+    width: 600px; background: #fff; border-radius: 18px; overflow: hidden;
+    box-shadow: 0 10px 36px rgba(0,0,0,.09);
+  }
+  .chat-head {
+    padding: 15px 20px; background: #F5F0E8; border-bottom: 1px solid #EDE6DC;
+    font-size: 14px; font-weight: 600; color: #5A5A5A;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #FFC72C; }
+  .chat-body { padding: 18px 20px 22px; }
+  .bubble { display: flex; gap: 10px; margin-bottom: 13px; }
+  .av {
+    flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%;
+    background: #FDECEA; color: #DA291C; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .msg { flex: 1; }
+  .who { font-size: 12px; color: #8C8C8C; margin-bottom: 4px; }
+  .txt {
+    display: inline-block; padding: 8px 13px; border-radius: 4px 12px 12px 12px;
+    background: #F6F3EE; font-size: 14.5px; line-height: 1.5; color: #1F1F1F;
+  }
+
+  /* ---------- 场景 2：控制台 ---------- */
+  #s2 { display: flex; align-items: center; justify-content: center; }
+  .term {
+    width: 740px; background: #fff; border-radius: 16px; overflow: hidden;
+    box-shadow: 0 10px 36px rgba(0,0,0,.09);
+  }
+  .term-head {
+    padding: 12px 16px; background: #F5F0E8; border-bottom: 1px solid #EDE6DC;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .tdot { width: 11px; height: 11px; border-radius: 50%; }
+  .term-title { margin-left: 8px; font-size: 12.5px; color: #8C8C8C; }
+  .term-body { padding: 16px 20px 18px; font-family: "SF Mono", Consolas, "Cascadia Mono", monospace; }
+  .line { font-size: 13.5px; line-height: 1.95; white-space: nowrap; }
+  .cmd { color: #5A5A5A; }
+  .cmd::before { content: "$ "; color: #DA291C; font-weight: 700; }
+  .ok { color: #1F7A3D; }
+  .ok::before { content: "✓ "; font-weight: 700; }
+  .arrow { color: #DA291C; }
+  .arrow::before { content: "→ "; font-weight: 700; }
+
+  /* ---------- 场景 3：分账卡片 ---------- */
+  #s3 { overflow: hidden; }
+  #cardwrap { position: absolute; left: 74px; top: 0; width: 752px; transform-origin: top center; }
+  #cardwrap iframe { width: 752px; height: 1150px; border: 0; display: block; }
+
+  /* 顶部品牌角标 */
+  .badge {
+    position: absolute; top: 22px; left: 26px; font-size: 13px; font-weight: 700;
+    color: #DA291C; letter-spacing: .5px; z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- ========== 场景 1 ========== -->
+  <div class="scene" id="s1">
+    <div class="chat">
+      <div class="chat-head"><span class="dot"></span>拼单群 · 5 人</div>
+      <div class="chat-body">
+        <div class="bubble"><div class="av">张</div><div class="msg">
+          <div class="who">张三</div><div class="txt">麦辣鸡腿堡套餐 x1</div></div></div>
+        <div class="bubble"><div class="av">李</div><div class="msg">
+          <div class="who">李四</div><div class="txt">巨无霸 + 中薯 + 可乐</div></div></div>
+        <div class="bubble"><div class="av">王</div><div class="msg">
+          <div class="who">王五</div><div class="txt">2个麦香鱼 1份薯条 不要番茄酱</div></div></div>
+        <div class="bubble"><div class="av">赵</div><div class="msg">
+          <div class="who">赵六</div><div class="txt">板烧鸡腿堡 去冰可乐</div></div></div>
+        <div class="bubble"><div class="av">陈</div><div class="msg">
+          <div class="who">陈七</div><div class="txt">1+1随心配</div></div></div>
+      </div>
+    </div>
+    <div class="caption" id="cap1">把群聊记录<b>直接粘进来</b>就行，不用整理格式</div>
+  </div>
+
+  <!-- ========== 场景 2 ========== -->
+  <div class="scene" id="s2">
+    <div class="term">
+      <div class="term-head">
+        <span class="tdot" style="background:#FF5F57"></span>
+        <span class="tdot" style="background:#FEBC2E"></span>
+        <span class="tdot" style="background:#28C840"></span>
+        <span class="term-title">麦麦拼单官 · mcd-group-order</span>
+      </div>
+      <div class="term-body">
+        <div class="line cmd">python scripts/parse_orders.py -i chat.txt</div>
+        <div class="line ok">识别到 5 人 / 9 项报单</div>
+        <div class="line cmd">python scripts/plan_coupons.py -i coupons.json</div>
+        <div class="line ok">7 张券 → 剪枝出 8 个候选组合</div>
+        <div class="line cmd">calculate-price ×8 试算</div>
+        <div class="line ok">最优：满150减30，立省 ¥30.00</div>
+        <div class="line cmd">python scripts/split_bill.py -i bill.json</div>
+        <div class="line ok">分账完成 合计 ¥157.90，总额校验通过</div>
+        <div class="line arrow">生成分账卡片 split-card.html</div>
+      </div>
+    </div>
+    <div class="caption" id="cap2">券组合交给<b>算价接口试算</b>，分账精确到分、合计恒等</div>
+  </div>
+
+  <!-- ========== 场景 3 ========== -->
+  <div class="scene" id="s3">
+    <div id="cardwrap">
+      <iframe id="cardframe" src="../examples/sample_card.html" scrolling="no"></iframe>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const clamp01 = x => Math.max(0, Math.min(1, x));
+  const ease = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
+
+  const SCENES = { s1: [0.0, 2.8], s2: [2.8, 6.0], s3: [6.0, 8.8] };
+
+  function sceneOpacity(t, a, b) {
+    const fin = ease((t - a) / 0.32);
+    const fout = 1 - ease((t - (b - 0.22)) / 0.22);
+    return Math.min(fin, fout);
+  }
+
+  function reveal(el, t, appear, dist) {
+    if (!el) return;
+    const p = ease((t - appear) / 0.38);
+    el.style.opacity = p;
+    el.style.transform = 'translateY(' + ((1 - p) * (dist || 10)) + 'px)';
+  }
+
+  function render(t) {
+    for (const id in SCENES) {
+      const el = document.getElementById(id);
+      // 只调 opacity，不碰 display —— 否则会覆盖 #s1/#s2 的 flex 居中
+      el.style.opacity = sceneOpacity(t, SCENES[id][0], SCENES[id][1]);
+      el.style.visibility = sceneOpacity(t, SCENES[id][0], SCENES[id][1]) <= 0.002
+        ? 'hidden' : 'visible';
+    }
+
+    document.querySelectorAll('#s1 .bubble').forEach((b, i) =>
+      reveal(b, t, 0.25 + i * 0.28));
+
+    document.querySelectorAll('#s2 .line').forEach((l, i) =>
+      reveal(l, t, 3.12 + i * 0.26, 6));
+
+    const card = document.getElementById('cardwrap');
+    const p = ease((t - 6.3) / 0.65);
+    card.style.opacity = p;
+    card.style.transform = 'scale(' + (0.97 + 0.03 * p) + ')';
+  }
+
+  window.render = render;
+  render(0);
+</script>
+</body>
+</html>
