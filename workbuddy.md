@@ -215,6 +215,66 @@
 
 ---
 
+## 会话 8 · 在线分账试算器（GitHub Pages）
+
+**起因**：看到同赛道的参赛作品 `hujjun/mcd-saver-strategist` 有一个在线试算页
+（`hujjun.github.io/mcd-saver-strategist/#playground`），用户问「这种网站怎么部署的」。
+
+**侦察结论**（curl 实测，不是猜）：
+
+| 证据 | 结果 |
+|---|---|
+| 响应头 | `Server: GitHub.com`、`x-github-edge-region: japaneast` |
+| 体积 | 43 KB **单个 HTML** |
+| 外部依赖 | `<script src>` / `<link href>` 数量 **0** —— 全部内联 |
+
+→ 它把算法跑在**浏览器 JS** 里，所以不需要后端。这是纯静态站点 + GitHub Pages。
+
+**关键判断**：我们的分账引擎是**纯整数确定性运算**，天然适合搬到前端。
+
+### 做了什么
+
+1. **`docs/index.html`**（单文件，0 外部依赖）
+   - 把 `split_bill.py` 的 `allocate()` / `allocate_capped()` / `split_bill()` **1:1 复刻**成 JS
+   - 交互：按人编辑商品、全局优惠/费用/口径、垫付人
+   - 输出：汇总四格、恒等校验徽章、每人应付表、转账方案、**三口径对比**、Markdown/JSON 导出
+   - 支持粘贴 JSON 导入（与 CLI 输入格式一致）
+2. **`.github/workflows/pages.yml`** —— `configure-pages@v5` 带 `enablement: true`，
+   首次运行自动把 Pages 源切到 "GitHub Actions"，**不需要手动去 Settings 点**
+3. **`docs/.nojekyll`** —— 防止 Jekyll 处理下划线开头文件
+4. **`tests/test_frontend_parity.py`**（8 项）+ `tests/parity_check.js`
+5. **`tests/shot.js`** —— 用本机 Chrome（`playwright-core` + `channel:'chrome'`，零下载）
+   做可视检查：断言无 console error、页面数据自洽、输出 `assets/preview.png`
+
+### 为什么一致性测试这样写（核心设计）
+
+复刻算法最大的风险**不是写错，而是悄悄漂移**——某天只改了 Python，前端就变成另一个算法，
+而页面上依然显示「恒等校验通过」（因为它校验的是它自己）。
+
+所以 `parity_check.js` **不比对「我复制的代码」**，而是：
+
+1. 读出**真正要发布的那份 `docs/index.html`**，用正则抽出其中的 `<script>`；
+2. 给 `document` / `navigator` 打桩（Node 18+ 的 `globalThis.navigator` 是只读的，
+   必须用 `Object.defineProperty`），在 Node 里**执行真实产物**；
+3. 取回 `window.MCDSplit`，跑 240 组随机账单 + 各种边界；
+4. 与 `split_bill.py` 逐字段比对 `shares` / `summary` / `transfers` / Markdown 全文。
+
+这样校验的是**实际产物**，而不是「我以为的产物」。
+
+**踩坑**：
+
+- `return` 放在 `loadBill()` 之前才生效——批量分支必须先于单文件分支，否则
+  `node parity_check.js --batch` 会去读一个名为 `--batch` 的文件而 ENOENT。
+- Git Bash 的 `/tmp` 与原生 Windows Python 的 `/tmp` **不是同一个路径**，
+  中间文件必须放项目内或走 stdin，否则会拿到空文件——而 `diff` 两边都空时
+  会返回 0，**产生「✅ 完全一致」的假阳性**。这个坑第一次就踩了，已改为 stdin 传输。
+
+**验证**：测试 86 → **94 项全通过**；Chrome 实测页面 0 console 报错，
+示例账单结果与 Python 完全一致（¥168.90 / -¥30.00 / +¥9.00 / **¥147.90**，
+转账 4 笔）。
+
+---
+
 ## 使用说明
 
 本项目在 WorkBuddy 中运行的最小闭环：

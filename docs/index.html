@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>麦麦拼单官 · 在线分账试算器 | mcd-group-order</title>
+<meta name="description" content="麦当劳拼单分账在线试算器。最大余额法，全程整数分运算，明细合计恒等于订单实付。纯前端确定性算法，打开即用，无需安装。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23DA291C'/%3E%3Ctext y='72' x='50' font-size='62' text-anchor='middle' fill='%23FFC72C' font-family='sans-serif' font-weight='bold'%3E%E9%BA%A6%3C/text%3E%3C/svg%3E">
+<style>
+:root {
+  --red: #DA291C;
+  --red-d: #B41E12;
+  --yellow: #FFC72C;
+  --ink: #1F1F1F;
+  --ink-2: #5A5A5A;
+  --ink-3: #8C8C8C;
+  --line: #EDE6DC;
+  --bg: #FAF7F2;
+  --card: #FFFFFF;
+  --ok: #12805C;
+  --ok-bg: #E7F6F0;
+  --warn: #A6631B;
+  --warn-bg: #FDF3E3;
+  --bad: #C0392B;
+  --bad-bg: #FDECEA;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.55;
+}
+a { color: var(--red); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px 72px; }
+
+/* ---------- header ---------- */
+header {
+  background: linear-gradient(120deg, var(--red) 0%, var(--red-d) 100%);
+  color: #fff;
+  padding: 28px 0 30px;
+  margin-bottom: 24px;
+}
+header .wrap { padding-bottom: 0; }
+.brand { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.logo {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--yellow);
+  color: var(--red); font-weight: 800; font-size: 24px;
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+h1 { font-size: 22px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+h1 small { display: block; font-size: 12.5px; font-weight: 400; opacity: .82; letter-spacing: .3px; margin-top: 3px; }
+.tagline { margin: 16px 0 0; font-size: 14px; opacity: .93; }
+.tagline b { color: var(--yellow); }
+.navlinks { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+.navlinks a {
+  color: #fff; border: 1px solid rgba(255,255,255,.42); border-radius: 999px;
+  padding: 5px 14px; font-size: 12.5px; transition: background .15s;
+}
+.navlinks a:hover { background: rgba(255,255,255,.16); text-decoration: none; }
+
+/* ---------- layout ---------- */
+.cols { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.col-right { position: sticky; top: 16px; }
+@media (max-width: 900px) { .col-right { position: static; } }
+
+.card {
+  background: var(--card); border-radius: 16px;
+  box-shadow: 0 4px 18px rgba(31,31,31,.06);
+  border: 1px solid var(--line);
+  margin-bottom: 18px; overflow: hidden;
+}
+.card > h2 {
+  font-size: 14px; margin: 0; padding: 14px 18px;
+  border-bottom: 1px solid var(--line); font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+.card > h2 .sub { font-weight: 400; color: var(--ink-3); font-size: 12px; margin-left: auto; }
+.card-body { padding: 16px 18px; }
+
+/* ---------- person cards ---------- */
+.person { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; background: #FDFBF8; }
+.person-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.person-head .idx {
+  width: 22px; height: 22px; border-radius: 50%; background: var(--red); color: #fff;
+  font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none;
+}
+input, select {
+  font: inherit; font-size: 13px; color: var(--ink); background: #fff;
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; width: 100%;
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus, select:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px rgba(218,41,28,.1); }
+input[type=number] { text-align: right; font-variant-numeric: tabular-nums; }
+.p-name { font-weight: 600; flex: 1 1 110px; min-width: 90px; }
+.item-row { display: grid; grid-template-columns: minmax(0,1fr) 84px 56px 30px; gap: 6px; margin-bottom: 6px; align-items: center; }
+@media (max-width: 480px) {
+  .item-row { grid-template-columns: minmax(0,1fr) 68px 44px 28px; gap: 5px; }
+  .item-row input { padding: 6px 6px; font-size: 12.5px; }
+  .item-row.head-row { font-size: 10px; }
+  .icon-btn { width: 28px; height: 28px; font-size: 14px; }
+}
+.item-row.head-row { font-size: 11px; color: var(--ink-3); margin-bottom: 3px; }
+.item-row.head-row span { text-align: right; }
+.item-row.head-row span:first-child { text-align: left; }
+.icon-btn {
+  border: 1px solid var(--line); background: #fff; color: var(--ink-3);
+  border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 15px;
+  line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0;
+  transition: all .15s;
+}
+.icon-btn:hover { border-color: var(--red); color: var(--red); background: var(--bad-bg); }
+.btn {
+  font: inherit; font-size: 13px; border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 7px 14px;
+  transition: all .15s;
+}
+.btn:hover { border-color: var(--red); color: var(--red); }
+.btn.primary { background: var(--red); border-color: var(--red); color: #fff; font-weight: 600; }
+.btn.primary:hover { background: var(--red-d); color: #fff; }
+.btn.ghost { border-style: dashed; color: var(--ink-2); }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- globals ---------- */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.field label { display: block; font-size: 11.5px; color: var(--ink-2); margin-bottom: 4px; }
+.hint { font-size: 11.5px; color: var(--ink-3); margin: 8px 0 0; line-height: 1.5; }
+details { margin-top: 10px; }
+summary { cursor: pointer; font-size: 12.5px; color: var(--ink-2); }
+summary:hover { color: var(--red); }
+textarea {
+  width: 100%; min-height: 130px; margin-top: 8px; font: 12px/1.5 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px; resize: vertical; color: var(--ink);
+}
+textarea:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px rgba(218,41,28,.1); }
+
+/* ---------- summary tiles ---------- */
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); }
+.tile { background: #fff; padding: 12px 10px; text-align: center; }
+.tile .k { font-size: 11px; color: var(--ink-3); margin-bottom: 3px; }
+.tile .v { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile .v.red { color: var(--red); }
+.tile .v.dim { color: var(--ink-2); font-weight: 600; }
+@media (max-width: 420px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---------- verify badge ---------- */
+.verify {
+  display: flex; gap: 9px; align-items: flex-start;
+  padding: 11px 13px; border-radius: 10px; font-size: 12.5px; line-height: 1.5;
+}
+.verify .mark { font-size: 15px; line-height: 1.25; flex: none; }
+.verify.ok { background: var(--ok-bg); color: var(--ok); }
+.verify.bad { background: var(--bad-bg); color: var(--bad); }
+.verify.warn { background: var(--warn-bg); color: var(--warn); }
+.verify code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+/* ---------- tables ---------- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 6px; text-align: right; font-variant-numeric: tabular-nums; }
+th { font-size: 11.5px; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; font-variant-numeric: normal; }
+tbody tr { border-bottom: 1px solid #F5F0E8; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr.total { border-top: 2px solid var(--line); border-bottom: none; font-weight: 700; }
+td.pay { font-weight: 700; color: var(--red); }
+.pill {
+  display: inline-block; font-size: 10.5px; padding: 1px 7px; border-radius: 999px;
+  background: #F2ECE3; color: var(--ink-2); margin-left: 6px; font-weight: 500;
+}
+.pill.hot { background: var(--yellow); color: var(--red); font-weight: 700; }
+.sub-items { display: block; font-size: 11px; color: var(--ink-3); font-weight: 400; margin-top: 1px; }
+
+/* ---------- transfers ---------- */
+.tx { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.tx:last-child { border-bottom: none; }
+.tx .from { font-weight: 600; }
+.tx .arrow { color: var(--red); font-weight: 700; }
+.tx .amt { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--red); }
+
+/* ---------- compare ---------- */
+.cmp-note { font-size: 11.5px; color: var(--ink-3); margin: 0 0 10px; }
+.cmp-legend { font-size: 11px; color: var(--ink-3); margin: 8px 0 0; }
+.cmp-legend b { color: var(--ok); }
+td.best { background: #F1F9F5; color: var(--ok); font-weight: 700; }
+td.best::before { content: "✓ "; font-size: 10.5px; opacity: .8; }
+
+/* ---------- footer ---------- */
+.explain { margin-top: 26px; }
+.explain .card-body { font-size: 13.5px; color: var(--ink-2); }
+.explain h3 { font-size: 14px; color: var(--ink); margin: 0 0 8px; }
+.explain h3:not(:first-child) { margin-top: 22px; }
+.explain ul { margin: 8px 0 0; padding-left: 20px; }
+.explain li { margin-bottom: 5px; }
+.explain code {
+  font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+  background: #F5F0E8; padding: 1px 5px; border-radius: 5px; color: var(--red-d);
+}
+.naive { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+@media (max-width: 560px) { .naive { grid-template-columns: 1fr; } }
+.naive > div { border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; background: #FDFBF8; }
+.naive h4 { margin: 0 0 7px; font-size: 12.5px; }
+.naive .bad-h { color: var(--bad); }
+.naive .ok-h { color: var(--ok); }
+.naive .nums { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; color: var(--ink-2); }
+footer.site { text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 30px; }
+footer.site a { color: var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">麦</div>
+      <h1>麦麦拼单官 · 在线分账试算器
+        <small>mcd-group-order · Largest Remainder Method</small>
+      </h1>
+    </div>
+    <p class="tagline">全程以「<b>分</b>」为单位的整数运算 —— 明细合计 <b>恒等于</b> 订单实付，永不出 0.01 尾差。</p>
+    <div class="navlinks">
+      <a href="https://github.com/zxz-Fine/mcd-group-order">GitHub 仓库</a>
+      <a href="../demo/animation.html">动画演示</a>
+      <a href="#explain">算法说明</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="cols">
+
+  <!-- ============ 左：输入 ============ -->
+  <div class="col-left">
+
+    <section class="card">
+      <h2>🍔 谁点了什么 <span class="sub" id="itemCount">0 项</span></h2>
+      <div class="card-body">
+        <div id="persons"></div>
+        <div class="btn-row">
+          <button class="btn ghost" id="addPerson">+ 加一个人</button>
+          <button class="btn" id="loadSample">载入示例（5 人办公室拼单）</button>
+          <button class="btn" id="clearAll">清空</button>
+        </div>
+        <details>
+          <summary>从 JSON 导入（与 split_bill.py 输入格式一致）</summary>
+          <textarea id="jsonIn" spellcheck="false" placeholder='{
+  "payer": "张三",
+  "discount": 30.0,
+  "delivery_fee": 9.0,
+  "items": [
+    { "person": "张三", "name": "麦辣鸡腿堡套餐", "unit_price": 32.0, "qty": 1 }
+  ]
+}'></textarea>
+          <div class="btn-row" style="margin-top:8px">
+            <button class="btn primary" id="importJson">导入并试算</button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>💰 优惠与费用</h2>
+      <div class="card-body">
+        <div class="grid2">
+          <div class="field">
+            <label>优惠总额（元）</label>
+            <input type="number" id="discount" value="30" min="0" step="0.01">
+          </div>
+          <div class="field">
+            <label>配送费（元）</label>
+            <input type="number" id="deliveryFee" value="9" min="0" step="0.01">
+          </div>
+          <div class="field">
+            <label>打包费（元）</label>
+            <input type="number" id="packagingFee" value="0" min="0" step="0.01">
+          </div>
+          <div class="field">
+            <label>垫付人</label>
+            <select id="payer"></select>
+          </div>
+          <div class="field">
+            <label>优惠分摊口径</label>
+            <select id="discountPolicy">
+              <option value="proportional">按商品原价比例（默认）</option>
+              <option value="equal">按人头均摊</option>
+              <option value="owner">谁用券谁受益</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>费用分摊口径</label>
+            <select id="feePolicy">
+              <option value="equal">按人头均摊（默认）</option>
+              <option value="proportional">按商品原价比例</option>
+            </select>
+          </div>
+          <div class="field" id="ownerField" style="display:none">
+            <label>优惠归属人（owner 口径）</label>
+            <select id="discountOwner"></select>
+          </div>
+        </div>
+        <p class="hint">
+          拼单群里最容易吵架的就是「优惠怎么分」。这里把它显式化成口径选项，而不是争议点。
+        </p>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ 右：结果 ============ -->
+  <div class="col-right">
+
+    <section class="card">
+      <h2>📊 分账结果</h2>
+      <div class="tiles" id="tiles"></div>
+      <div class="card-body" style="padding-top:14px">
+        <div id="verify"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>🧾 每人应付</h2>
+      <div class="card-body" style="padding-top:6px">
+        <table id="sharesTable"></table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>💸 转账方案 <span class="sub">星型拓扑 · 笔数最少</span></h2>
+      <div class="card-body" style="padding-top:6px" id="transfers"></div>
+    </section>
+
+    <section class="card">
+      <h2>⚖️ 三种口径对比</h2>
+      <div class="card-body">
+        <p class="cmp-note">同一张单，换口径各人应付差多少？</p>
+        <table id="compareTable"></table>
+        <p class="cmp-legend"><b>✓</b> 表示该人在此口径下最省。三种口径的合计永远相同 —— 换的只是「怎么分」。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>📋 一键贴群</h2>
+      <div class="card-body">
+        <div class="btn-row">
+          <button class="btn primary" id="copyMd">复制 Markdown 分账单</button>
+          <button class="btn" id="copyJson">复制 JSON</button>
+        </div>
+        <p class="hint" id="copyHint">生成的分账单可直接粘贴到群里，格式与 <code>split_bill.py --markdown</code> 一致。</p>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ============ 说明 ============ -->
+<section class="explain" id="explain">
+  <div class="card">
+    <div class="card-body">
+      <h3>为什么不能直接用浮点数算？</h3>
+      <p style="margin:0">3 个人均摊 ¥10.00，每人 3.333… 元。四舍五入到分，三个人加起来只有 ¥9.99 —— 少了 1 分。这 1 分总得有人出，于是群里开始扯皮。</p>
+      <div class="naive">
+        <div>
+          <h4 class="bad-h">✗ 朴素四舍五入</h4>
+          <div class="nums">3.33 + 3.33 + 3.33<br>= <b>9.99</b> ≠ 10.00<br>凭空少了 0.01</div>
+        </div>
+        <div>
+          <h4 class="ok-h">✓ 最大余额法</h4>
+          <div class="nums">3.34 + 3.33 + 3.33<br>= <b>10.00</b> = 10.00<br>合计精确恒等</div>
+        </div>
+      </div>
+
+      <h3>最大余额法（Largest Remainder Method）</h3>
+      <ul>
+        <li>先按权重算出每人应得的「理论值」，<b>向下取整</b>得到基础分摊额；</li>
+        <li>把取整丢掉的余数，按<b>小数部分从大到小</b>逐一补回去；</li>
+        <li>数学保证 <code>Σ(每人应付) ≡ 订单实付</code>，一分不差。</li>
+      </ul>
+
+      <h3>优惠分摊为什么要带上限？</h3>
+      <p style="margin:0">如果一张券的面额超过了某人的商品原价，按比例分给他会出现<b>负数应付</b>。这里用「注水法」：谁先触顶就把他的额度锁死，剩余优惠由其余人继续按比例分，直到分完。</p>
+
+      <h3>口径说明</h3>
+      <ul>
+        <li><b>proportional</b> —— 按商品原价比例分摊。买得多省得多，最公平，默认。</li>
+        <li><b>equal</b> —— 按人头均摊。最省事，适合大家点得差不多的情况。</li>
+        <li><b>owner</b> —— 谁触发/持有该券谁独享优惠。券是人家的，人情归人家。</li>
+      </ul>
+
+      <h3>这个页面是真的在算，不是摆设</h3>
+      <p style="margin:0">本页算法与仓库里 <code>skills/mcd-group-order/scripts/split_bill.py</code> 的 <code>allocate()</code> / <code>allocate_capped()</code> <b>逐行对齐</b>，纯前端确定性整数运算，无后端、无网络请求、不上传任何数据。所有金额只在你的浏览器里算。</p>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  麦麦拼单官 · mcd-group-order &nbsp;·&nbsp; <a href="https://github.com/zxz-Fine/mcd-group-order">github.com/zxz-Fine/mcd-group-order</a>
+  <br>本站点由 GitHub Pages 托管 · 静态页面 · 不收集任何数据
+</footer>
+</div>
+
+<script>
+"use strict";
+
+/* ==================================================================== *
+ * 一、分账引擎 —— 与 split_bill.py 逐行对齐
+ * ==================================================================== */
+
+function yuanToCents(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  return Math.round(parseFloat(v) * 100);
+}
+
+function centsToYuan(c) {
+  var sign = c < 0 ? "-" : "";
+  c = Math.abs(Math.round(c));
+  var yuan = Math.floor(c / 100);
+  var rest = c % 100;
+  return sign + yuan + "." + (rest < 10 ? "0" + rest : "" + rest);
+}
+
+/* 最大余额法：把 totalCents 按 weights 比例分摊为整数分列表。
+   保证 Σ(返回值) === totalCents（totalCents >= 0 且权重非负时）。 */
+function allocate(totalCents, weights) {
+  var n = weights.length;
+  if (n === 0) return [];
+  if (totalCents === 0) return new Array(n).fill(0);
+
+  var w = weights.map(function (x) { return Math.max(0, Number(x) || 0); });
+  var totalWeight = w.reduce(function (a, b) { return a + b; }, 0);
+  if (totalWeight <= 0) {           // 权重全为 0 → 退化为均分
+    w = new Array(n).fill(1);
+    totalWeight = n;
+  }
+
+  var raw = w.map(function (x) { return totalCents * x / totalWeight; });
+  var base = raw.map(function (r) { return Math.floor(r); });
+
+  var remainder = totalCents - base.reduce(function (a, b) { return a + b; }, 0);
+  // 小数部分降序；平局按索引升序，保证结果可复现
+  var order = [];
+  for (var i = 0; i < n; i++) order.push(i);
+  order.sort(function (a, b) {
+    var fa = raw[a] - Math.floor(raw[a]);
+    var fb = raw[b] - Math.floor(raw[b]);
+    if (fb !== fa) return fb - fa;
+    return a - b;
+  });
+
+  var k = 0;
+  while (remainder > 0) {
+    base[order[k % n]] += 1;
+    remainder -= 1;
+    k += 1;
+  }
+  return base;
+}
+
+/* 带单人上限的按权重分摊（注水法）。
+   返回 { shares, overflow }；overflow 仅当所有人都触顶时才 > 0。 */
+function allocateCapped(totalCents, weights, caps) {
+  var n = weights.length;
+  if (n === 0) return { shares: [], overflow: totalCents };
+  if (!caps) caps = new Array(n).fill(null);
+
+  var result = new Array(n).fill(0);
+  var remaining = totalCents;
+  var active = [];
+  for (var i = 0; i < n; i++) active.push(i);
+
+  while (remaining > 0 && active.length > 0) {
+    var subWeights = active.map(function (i) { return Math.max(0, Number(weights[i]) || 0); });
+    var subCaps = active.map(function (i) {
+      var cap = caps[i];
+      return (cap === null || cap === undefined) ? null : cap - result[i];
+    });
+    var shares = allocate(remaining, subWeights);
+
+    var progressed = false;
+    for (var pos = 0; pos < active.length; pos++) {
+      var idx = active[pos];
+      var give = shares[pos];
+      if (subCaps[pos] !== null) give = Math.min(give, subCaps[pos]);
+      if (give > 0) { progressed = true; result[idx] += give; remaining -= give; }
+    }
+    if (!progressed) break;   // 所有人都已触顶，剩余无法分摊
+    active = active.filter(function (i) {
+      var cap = caps[i];
+      return (cap === null || cap === undefined) || result[i] < cap;
+    });
+  }
+  return { shares: result, overflow: remaining };
+}
+
+/* 主算法：与 split_bill() 对齐 */
+function splitBill(items, opts) {
+  opts = opts || {};
+  var discountPolicy = opts.discountPolicy || "proportional";
+  var feePolicy = opts.feePolicy || "equal";
+  var note = opts.note || "";
+
+  var rows = items.filter(function (it) { return it.qty > 0; });
+  if (rows.length === 0) return { error: "报单为空：至少需要一条商品行" };
+
+  // 按点单人分组，保持首次出现顺序
+  var order = [];
+  var grouped = {};
+  rows.forEach(function (it) {
+    var p = it.person;
+    if (!Object.prototype.hasOwnProperty.call(grouped, p)) { grouped[p] = []; order.push(p); }
+    grouped[p].push(it);
+  });
+
+  var n = order.length;
+  var subtotals = order.map(function (p) {
+    return grouped[p].reduce(function (a, x) { return a + x.unitPriceCents * x.qty; }, 0);
+  });
+  var subtotalTotal = subtotals.reduce(function (a, b) { return a + b; }, 0);
+
+  var payer = opts.payer || order[0];
+
+  // ---- 优惠分摊 ----
+  var discountCents = Math.max(0, Math.round(opts.discountCents || 0));
+  var dWeights, dCaps;
+  if (discountPolicy === "equal") {
+    dWeights = new Array(n).fill(1);
+    dCaps = new Array(n).fill(null);
+  } else if (discountPolicy === "owner") {
+    if (opts.discountOwner && Object.prototype.hasOwnProperty.call(grouped, opts.discountOwner)) {
+      dWeights = order.map(function (p) { return p === opts.discountOwner ? 1 : 0; });
+      dCaps = new Array(n).fill(null);
+    } else {
+      discountPolicy = "proportional";
+      dWeights = subtotals.slice();
+      dCaps = subtotals.slice();
+      note = (note ? note + " " : "") + "未指定优惠归属人，已退回按比例分摊。";
+    }
+  } else {
+    dWeights = subtotals.slice();
+    dCaps = subtotals.slice();
+  }
+
+  var dRes = allocateCapped(discountCents, dWeights, dCaps);
+  var discounts = dRes.shares;
+  var overflow = dRes.overflow;
+
+  // ---- 费用分摊 ----
+  var feesTotal = Math.max(0, Math.round(opts.deliveryFeeCents || 0))
+                + Math.max(0, Math.round(opts.packagingFeeCents || 0));
+  var fWeights = (feePolicy === "proportional" && subtotalTotal > 0) ? subtotals.slice() : new Array(n).fill(1);
+  var fees = allocate(feesTotal, fWeights);
+
+  // ---- 汇总 ----
+  var shares = order.map(function (p, i) {
+    return {
+      person: p,
+      subtotalCents: subtotals[i],
+      discountCents: discounts[i],
+      feeCents: fees[i],
+      payableCents: subtotals[i] - discounts[i] + fees[i],
+      items: grouped[p].map(function (x) { return x.name + "×" + x.qty; })
+    };
+  });
+
+  var effectiveDiscount = discountCents - overflow;
+  var payable = subtotalTotal - effectiveDiscount + feesTotal;
+
+  return {
+    shares: shares,
+    subtotalCents: subtotalTotal,
+    discountCents: effectiveDiscount,
+    deliveryFeeCents: Math.max(0, Math.round(opts.deliveryFeeCents || 0)),
+    packagingFeeCents: Math.max(0, Math.round(opts.packagingFeeCents || 0)),
+    payableCents: payable,
+    discountPolicy: discountPolicy,
+    feePolicy: feePolicy,
+    payer: payer,
+    overflowCents: overflow,
+    note: note.trim()
+  };
+}
+
+/* 自检：两条恒等式 */
+function verifyResult(r) {
+  var sumShares = r.shares.reduce(function (a, x) { return a + x.payableCents; }, 0);
+  var expected = r.subtotalCents - r.discountCents + r.deliveryFeeCents + r.packagingFeeCents;
+  return {
+    sharesOk: sumShares === r.payableCents,
+    orderOk: expected === r.payableCents,
+    sumShares: sumShares,
+    expected: expected
+  };
+}
+
+function transfersOf(r) {
+  if (!r.payer) return [];
+  return r.shares
+    .filter(function (x) { return x.person !== r.payer && x.payableCents > 0; })
+    .map(function (x) { return { from: x.person, to: r.payer, amountCents: x.payableCents }; });
+}
+
+/* ==================================================================== *
+ * 二、状态与 UI
+ * ==================================================================== */
+
+var POLICY_CN = { proportional: "按商品原价比例分摊", equal: "按人头均摊", owner: "谁用券谁受益" };
+
+var state = {
+  groups: [
+    { person: "张三", items: [{ name: "麦辣鸡腿堡套餐", unitPrice: 32.0, qty: 1 }] },
+    { person: "李四", items: [{ name: "巨无霸", unitPrice: 25.0, qty: 1 }, { name: "中薯条", unitPrice: 12.0, qty: 1 }] }
+  ]
+};
+
+var SAMPLE = {
+  payer: "张三",
+  discount: 30.0,
+  delivery_fee: 9.0,
+  packaging_fee: 0,
+  discount_policy: "proportional",
+  fee_policy: "equal",
+  items: [
+    { person: "张三", name: "麦辣鸡腿堡套餐", unit_price: 32.0, qty: 1 },
+    { person: "李四", name: "巨无霸", unit_price: 25.0, qty: 1 },
+    { person: "李四", name: "中薯条", unit_price: 12.0, qty: 1 },
+    { person: "李四", name: "可口可乐", unit_price: 9.0, qty: 1 },
+    { person: "王五", name: "麦香鱼", unit_price: 15.0, qty: 2 },
+    { person: "王五", name: "中薯条", unit_price: 12.0, qty: 1 },
+    { person: "赵六", name: "板烧鸡腿堡", unit_price: 26.0, qty: 1 },
+    { person: "赵六", name: "可口可乐", unit_price: 9.0, qty: 1 },
+    { person: "陈七", name: "1+1随心配", unit_price: 13.9, qty: 1 }
+  ]
+};
+
+var $ = function (id) { return document.getElementById(id); };
+var esc = function (s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+};
+
+/* ---------- 渲染输入区 ---------- */
+function renderPersons() {
+  var host = $("persons");
+  var html = "";
+  state.groups.forEach(function (g, gi) {
+    html += '<div class="person" data-gi="' + gi + '">';
+    html += '<div class="person-head">';
+    html += '<span class="idx">' + (gi + 1) + "</span>";
+    html += '<input class="p-name" data-gi="' + gi + '" data-field="person" value="' + esc(g.person) + '" placeholder="昵称">';
+    html += '<button class="icon-btn" data-act="delPerson" data-gi="' + gi + '" title="删掉这个人">×</button>';
+    html += "</div>";
+    html += '<div class="item-row head-row"><span>商品</span><span>单价(元)</span><span>数量</span><span></span></div>';
+    g.items.forEach(function (it, ii) {
+      html += '<div class="item-row">';
+      html += '<input data-gi="' + gi + '" data-ii="' + ii + '" data-field="name" value="' + esc(it.name) + '" placeholder="商品名">';
+      html += '<input type="number" min="0" step="0.01" data-gi="' + gi + '" data-ii="' + ii + '" data-field="unitPrice" value="' + it.unitPrice + '">';
+      html += '<input type="number" min="1" step="1" data-gi="' + gi + '" data-ii="' + ii + '" data-field="qty" value="' + it.qty + '">';
+      html += '<button class="icon-btn" data-act="delItem" data-gi="' + gi + '" data-ii="' + ii + '" title="删掉这条">−</button>';
+      html += "</div>";
+    });
+    html += '<button class="btn ghost" data-act="addItem" data-gi="' + gi + '" style="margin-top:2px;font-size:12px;padding:4px 10px">+ 加一条商品</button>';
+    html += "</div>";
+  });
+  host.innerHTML = html;
+  renderPersonSelects();
+}
+
+/* 输入区变化 → 同步模型（不重绘输入区，避免丢焦点） */
+function syncFromDom() {
+  var host = $("persons");
+  host.querySelectorAll("input[data-field='person']").forEach(function (el) {
+    state.groups[+el.dataset.gi].person = el.value;
+  });
+  host.querySelectorAll(".item-row input[data-ii]").forEach(function (el) {
+    var g = state.groups[+el.dataset.gi];
+    var it = g.items[+el.dataset.ii];
+    if (!it) return;
+    var f = el.dataset.field;
+    if (f === "name") it.name = el.value;
+    else if (f === "unitPrice") it.unitPrice = Math.max(0, parseFloat(el.value) || 0);
+    else if (f === "qty") it.qty = Math.max(1, parseInt(el.value, 10) || 1);
+  });
+}
+
+/* ---------- 下拉框（垫付人 / 优惠归属人） ---------- */
+function renderPersonSelects() {
+  var names = state.groups.map(function (g) { return g.person; });
+  var keepPayer = $("payer").value;
+  var keepOwner = $("discountOwner").value;
+  var opts = names.map(function (nm, i) {
+    return '<option value="' + esc(nm) + '">' + esc(nm || "（未命名 " + (i + 1) + "）") + "</option>";
+  }).join("");
+  $("payer").innerHTML = opts;
+  $("discountOwner").innerHTML = opts;
+  if (names.indexOf(keepPayer) >= 0) $("payer").value = keepPayer;
+  if (names.indexOf(keepOwner) >= 0) $("discountOwner").value = keepOwner;
+}
+
+/* ---------- 读取全局参数 ---------- */
+function readGlobals() {
+  return {
+    discountCents: yuanToCents($("discount").value),
+    deliveryFeeCents: yuanToCents($("deliveryFee").value),
+    packagingFeeCents: yuanToCents($("packagingFee").value),
+    discountPolicy: $("discountPolicy").value,
+    feePolicy: $("feePolicy").value,
+    payer: $("payer").value,
+    discountOwner: $("discountOwner").value
+  };
+}
+
+function flattenItems() {
+  var out = [];
+  state.groups.forEach(function (g) {
+    var person = (g.person || "").trim();
+    g.items.forEach(function (it) {
+      var qty = Math.max(1, parseInt(it.qty, 10) || 1);
+      var cents = yuanToCents(it.unitPrice);
+      if (cents <= 0) return;
+      out.push({
+        person: person || "（未命名）",
+        name: (it.name || "商品").trim(),
+        unitPriceCents: cents,
+        qty: qty
+      });
+    });
+  });
+  return out;
+}
+
+/* ==================================================================== *
+ * 三、计算 + 渲染结果
+ * ==================================================================== */
+
+var lastResult = null;
+
+function compute() {
+  var g = readGlobals();
+  var items = flattenItems();
+
+  $("ownerField").style.display = (g.discountPolicy === "owner") ? "" : "none";
+
+  var totalQty = items.reduce(function (a, x) { return a + x.qty; }, 0);
+  $("itemCount").textContent = totalQty + " 项 · " + state.groups.length + " 人";
+
+  if (items.length === 0) {
+    $("tiles").innerHTML = "";
+    $("verify").innerHTML = '<div class="verify warn"><span class="mark">!</span><div>先加一条商品（单价大于 0）才能试算。</div></div>';
+    $("sharesTable").innerHTML = "";
+    $("transfers").innerHTML = '<div class="hint">—</div>';
+    $("compareTable").innerHTML = "";
+    lastResult = null;
+    return;
+  }
+
+  var r = splitBill(items, g);
+  if (r.error) {
+    $("verify").innerHTML = '<div class="verify bad"><span class="mark">✗</span><div>' + esc(r.error) + "</div></div>";
+    lastResult = null;
+    return;
+  }
+  lastResult = r;
+  renderTiles(r);
+  renderVerify(r);
+  renderShares(r);
+  renderTransfers(r);
+  renderCompare(items, g);
+}
+
+function renderTiles(r) {
+  var saveRate = r.subtotalCents > 0 ? (r.discountCents / r.subtotalCents * 100) : 0;
+  $("tiles").innerHTML =
+    '<div class="tile"><div class="k">商品原价</div><div class="v dim">¥' + centsToYuan(r.subtotalCents) + "</div></div>" +
+    '<div class="tile"><div class="k">共省</div><div class="v red">-¥' + centsToYuan(r.discountCents) +
+      '<span class="pill">' + saveRate.toFixed(1) + "%</span></div></div>" +
+    '<div class="tile"><div class="k">配送+打包</div><div class="v dim">+¥' +
+      centsToYuan(r.deliveryFeeCents + r.packagingFeeCents) + "</div></div>" +
+    '<div class="tile"><div class="k">订单实付</div><div class="v red">¥' + centsToYuan(r.payableCents) + "</div></div>";
+}
+
+function renderVerify(r) {
+  var v = verifyResult(r);
+  var ok = v.sharesOk && v.orderOk && r.overflowCents === 0;
+  var cls = ok ? "ok" : "bad";
+  var mark = ok ? "✓" : "✗";
+  var body =
+    "<div><b>恒等校验通过</b> —— 明细合计 <code>¥" + centsToYuan(v.sumShares) +
+    "</code> 精确等于订单实付 <code>¥" + centsToYuan(r.payableCents) + "</code>，误差 0 分。</div>";
+  if (!ok) {
+    body = "<div><b>校验未通过</b> —— 明细合计 <code>¥" + centsToYuan(v.sumShares) +
+           "</code>，订单实付 <code>¥" + centsToYuan(r.payableCents) + "</code>。</div>";
+  } else if (r.overflowCents > 0) {
+    body = "<div><b>优惠超出商品总额</b> —— 有 <code>¥" + centsToYuan(r.overflowCents) +
+           "</code> 优惠无处可分摊（所有人都已触顶）。恒等关系仍然成立。</div>";
+    cls = "warn"; mark = "!";
+  }
+  if (r.note) body += '<div style="margin-top:5px;opacity:.85">' + esc(r.note) + "</div>";
+  $("verify").innerHTML = '<div class="verify ' + cls + '"><span class="mark">' + mark + "</span>" + body + "</div>";
+}
+
+function renderShares(r) {
+  var rows = r.shares.map(function (x) {
+    var tag = (x.person === r.payer) ? '<span class="pill hot">垫付</span>' : "";
+    return "<tr>" +
+      "<td>" + esc(x.person) + tag +
+        '<span class="sub-items">' + esc(x.items.join(" · ")) + "</span></td>" +
+      "<td>¥" + centsToYuan(x.subtotalCents) + "</td>" +
+      "<td>-¥" + centsToYuan(x.discountCents) + "</td>" +
+      "<td>+¥" + centsToYuan(x.feeCents) + "</td>" +
+      '<td class="pay">¥' + centsToYuan(x.payableCents) + "</td>" +
+      "</tr>";
+  }).join("");
+
+  var sumSub = r.shares.reduce(function (a, x) { return a + x.subtotalCents; }, 0);
+  var sumDis = r.shares.reduce(function (a, x) { return a + x.discountCents; }, 0);
+  var sumFee = r.shares.reduce(function (a, x) { return a + x.feeCents; }, 0);
+  var sumPay = r.shares.reduce(function (a, x) { return a + x.payableCents; }, 0);
+
+  $("sharesTable").innerHTML =
+    "<thead><tr><th>谁</th><th>商品原价</th><th>分摊优惠</th><th>分摊费用</th><th>应付</th></tr></thead>" +
+    "<tbody>" + rows +
+    '<tr class="total"><td>合计</td><td>¥' + centsToYuan(sumSub) + "</td>" +
+    "<td>-¥" + centsToYuan(sumDis) + "</td><td>+¥" + centsToYuan(sumFee) + "</td>" +
+    '<td class="pay">¥' + centsToYuan(sumPay) + "</td></tr>" +
+    "</tbody>";
+}
+
+function renderTransfers(r) {
+  var tx = transfersOf(r);
+  if (tx.length === 0) {
+    $("transfers").innerHTML = '<div class="hint">无需转账（本单由 ' + esc(r.payer) + " 一人承担）。</div>";
+    return;
+  }
+  $("transfers").innerHTML = tx.map(function (t) {
+    return '<div class="tx"><span class="from">' + esc(t.from) + '</span>' +
+      '<span class="arrow">→</span><span>' + esc(t.to) + '</span>' +
+      '<span class="amt">¥' + centsToYuan(t.amountCents) + "</span></div>";
+  }).join("");
+}
+
+function renderCompare(items, g) {
+  var policies = ["proportional", "equal", "owner"];
+  var results = policies.map(function (p) {
+    var o = Object.assign({}, g, { discountPolicy: p });
+    if (p === "owner" && !o.discountOwner) o.discountOwner = o.payer;
+    return splitBill(items, o);
+  });
+
+  var names = results[0].shares.map(function (s) { return s.person; });
+  var head = "<thead><tr><th>谁</th>" + policies.map(function (p) {
+    return "<th>" + POLICY_CN[p] + "</th>";
+  }).join("") + "</tr></thead>";
+
+  var body = names.map(function (nm, i) {
+    var vals = results.map(function (r) { return r.shares[i].payableCents; });
+    var min = Math.min.apply(null, vals);
+    var tds = vals.map(function (v, pi) {
+      var isOwnerFallback = (policies[pi] === "owner" && results[pi].discountPolicy !== "owner");
+      return "<td" + (v === min ? ' class="best"' : "") + ">¥" + centsToYuan(v) +
+        (isOwnerFallback ? '<span class="pill">已退回比例</span>' : "") + "</td>";
+    }).join("");
+    return "<tr><td>" + esc(nm) + "</td>" + tds + "</tr>";
+  }).join("");
+
+  var totals = policies.map(function (p, pi) {
+    var s = results[pi].shares.reduce(function (a, x) { return a + x.payableCents; }, 0);
+    return "<td>¥" + centsToYuan(s) + "</td>";
+  }).join("");
+
+  $("compareTable").innerHTML = head + "<tbody>" + body +
+    '<tr class="total"><td>合计</td>' + totals + "</tr></tbody>";
+}
+
+/* ==================================================================== *
+ * 四、导出
+ * ==================================================================== */
+
+function toMarkdown(r) {
+  var L = [];
+  L.push("## 🍟 拼单分账单");
+  L.push("");
+  if (r.note) { L.push("> " + r.note); L.push(""); }
+  L.push("| 谁 | 商品原价 | 分摊优惠 | 分摊费用 | **应付** |");
+  L.push("|---|---:|---:|---:|---:|");
+  r.shares.forEach(function (x) {
+    L.push("| " + x.person + " | ¥" + centsToYuan(x.subtotalCents) +
+      " | -¥" + centsToYuan(x.discountCents) +
+      " | +¥" + centsToYuan(x.feeCents) +
+      " | **¥" + centsToYuan(x.payableCents) + "** |");
+  });
+  L.push("| **合计** | ¥" + centsToYuan(r.subtotalCents) +
+    " | -¥" + centsToYuan(r.discountCents) +
+    " | +¥" + centsToYuan(r.deliveryFeeCents + r.packagingFeeCents) +
+    " | **¥" + centsToYuan(r.payableCents) + "** |");
+  L.push("");
+  L.push("**分账口径**：优惠 " + (POLICY_CN[r.discountPolicy] || r.discountPolicy) +
+    "；配送/打包费 " + (r.feePolicy === "equal" ? "按人头均摊" : "按原价比例分摊"));
+  if (r.discountCents > 0) {
+    var rate = r.subtotalCents ? (r.discountCents / r.subtotalCents * 100) : 0;
+    L.push("**本单共省**：¥" + centsToYuan(r.discountCents) + "（约 " + rate.toFixed(1) + "%）");
+  }
+  L.push("");
+  var tx = transfersOf(r);
+  if (tx.length) {
+    L.push("### 💸 转账");
+    tx.forEach(function (t) {
+      L.push("- **" + t.from + "** → " + t.to + "：¥" + centsToYuan(t.amountCents));
+    });
+  } else if (r.payer) {
+    L.push("无需转账（本单由 " + r.payer + " 一人承担）");
+  }
+  return L.join("\n");
+}
+
+function toJson(r) {
+  return JSON.stringify({
+    policy: { discount: r.discountPolicy, fee: r.feePolicy },
+    summary: {
+      subtotal: centsToYuan(r.subtotalCents),
+      discount: centsToYuan(r.discountCents),
+      delivery_fee: centsToYuan(r.deliveryFeeCents),
+      packaging_fee: centsToYuan(r.packagingFeeCents),
+      payable: centsToYuan(r.payableCents),
+      saved: centsToYuan(r.discountCents),
+      payer: r.payer,
+      overflow: centsToYuan(r.overflowCents)
+    },
+    shares: r.shares.map(function (x) {
+      return {
+        person: x.person,
+        subtotal: centsToYuan(x.subtotalCents),
+        discount: centsToYuan(x.discountCents),
+        fee: centsToYuan(x.feeCents),
+        payable: centsToYuan(x.payableCents),
+        items: x.items
+      };
+    }),
+    transfers: transfersOf(r).map(function (t) {
+      return { from: t.from, to: t.to, amount: centsToYuan(t.amountCents) };
+    }),
+    note: r.note
+  }, null, 2);
+}
+
+function copyText(text, hintEl, okMsg) {
+  var done = function () {
+    var old = hintEl.textContent;
+    hintEl.textContent = okMsg;
+    hintEl.style.color = "var(--ok)";
+    setTimeout(function () { hintEl.textContent = old; hintEl.style.color = ""; }, 2200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+
+function fallbackCopy(text, done) {
+  var ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); done(); } catch (e) { /* 忽略 */ }
+  document.body.removeChild(ta);
+}
+
+/* ==================================================================== *
+ * 五、事件绑定
+ * ==================================================================== */
+
+function addPerson(name) {
+  state.groups.push({
+    person: name || ("成员" + (state.groups.length + 1)),
+    items: [{ name: "巨无霸", unitPrice: 25.0, qty: 1 }]
+  });
+  renderPersons();
+  compute();
+}
+
+function loadSample() {
+  var g = {};
+  SAMPLE.items.forEach(function (it) {
+    if (!g[it.person]) g[it.person] = { person: it.person, items: [] };
+    g[it.person].items.push({ name: it.name, unitPrice: it.unit_price, qty: it.qty });
+  });
+  state.groups = Object.keys(g).map(function (k) { return g[k]; });
+
+  $("discount").value = SAMPLE.discount;
+  $("deliveryFee").value = SAMPLE.delivery_fee;
+  $("packagingFee").value = SAMPLE.packaging_fee;
+  $("discountPolicy").value = SAMPLE.discount_policy;
+  $("feePolicy").value = SAMPLE.fee_policy;
+
+  renderPersons();
+  $("payer").value = SAMPLE.payer;
+  compute();
+}
+
+function importJson() {
+  var raw = $("jsonIn").value.trim();
+  if (!raw) return;
+  var data;
+  try { data = JSON.parse(raw); }
+  catch (e) {
+    $("copyHint").textContent = "JSON 解析失败：" + e.message;
+    $("copyHint").style.color = "var(--bad)";
+    return;
+  }
+  if (!data.items || !data.items.length) {
+    $("copyHint").textContent = "JSON 里没有 items 数组。";
+    $("copyHint").style.color = "var(--bad)";
+    return;
+  }
+  var g = {};
+  data.items.forEach(function (it) {
+    var p = String(it.person || "（未命名）").trim();
+    if (!g[p]) g[p] = { person: p, items: [] };
+    var unit = (it.unit_price_cents !== undefined)
+      ? it.unit_price_cents / 100
+      : (it.unit_price !== undefined ? it.unit_price : (it.price || 0));
+    g[p].items.push({ name: it.name || "商品", unitPrice: unit, qty: it.qty || it.quantity || 1 });
+  });
+  state.groups = Object.keys(g).map(function (k) { return g[k]; });
+
+  var disc = data.discount_cents !== undefined ? data.discount_cents / 100 : (data.discount || 0);
+  var dfee = data.delivery_fee_cents !== undefined ? data.delivery_fee_cents / 100 : (data.delivery_fee || 0);
+  var pfee = data.packaging_fee_cents !== undefined ? data.packaging_fee_cents / 100 : (data.packaging_fee || 0);
+  $("discount").value = disc;
+  $("deliveryFee").value = dfee;
+  $("packagingFee").value = pfee;
+  if (data.discount_policy) $("discountPolicy").value = data.discount_policy;
+  if (data.fee_policy) $("feePolicy").value = data.fee_policy;
+
+  renderPersons();
+  if (data.payer && state.groups.some(function (x) { return x.person === data.payer; })) {
+    $("payer").value = data.payer;
+  }
+  if (data.discount_owner) $("discountOwner").value = data.discount_owner;
+
+  $("copyHint").textContent = "已导入 " + data.items.length + " 条商品，正在试算。";
+  $("copyHint").style.color = "var(--ok)";
+  compute();
+}
+
+function bind() {
+  // 输入区事件（委托）
+  $("persons").addEventListener("input", function () { syncFromDom(); compute(); });
+
+  $("persons").addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    var act = btn.dataset.act;
+    var gi = +btn.dataset.gi;
+    var ii = +btn.dataset.ii;
+
+    if (act === "delPerson") {
+      if (state.groups.length <= 1) return;
+      state.groups.splice(gi, 1);
+      renderPersons(); compute();
+    } else if (act === "addItem") {
+      state.groups[gi].items.push({ name: "可口可乐", unitPrice: 9.0, qty: 1 });
+      renderPersons(); compute();
+    } else if (act === "delItem") {
+      if (state.groups[gi].items.length <= 1) return;
+      state.groups[gi].items.splice(ii, 1);
+      renderPersons(); compute();
+    }
+  });
+
+  // 全局参数
+  ["discount", "deliveryFee", "packagingFee", "discountPolicy", "feePolicy", "payer", "discountOwner"]
+    .forEach(function (id) {
+      $(id).addEventListener("input", compute);
+      $(id).addEventListener("change", compute);
+    });
+
+  $("addPerson").addEventListener("click", function () { addPerson(); });
+  $("loadSample").addEventListener("click", loadSample);
+  $("clearAll").addEventListener("click", function () {
+    state.groups = [{ person: "我", items: [{ name: "巨无霸", unitPrice: 25.0, qty: 1 }] }];
+    renderPersons(); compute();
+  });
+  $("importJson").addEventListener("click", importJson);
+
+  $("copyMd").addEventListener("click", function () {
+    if (!lastResult) return;
+    copyText(toMarkdown(lastResult), $("copyHint"), "✓ Markdown 分账单已复制，直接贴群即可。");
+  });
+  $("copyJson").addEventListener("click", function () {
+    if (!lastResult) return;
+    copyText(toJson(lastResult), $("copyHint"), "✓ JSON 已复制。");
+  });
+}
+
+/* ---------- 启动 ---------- */
+renderPersons();
+bind();
+compute();
+
+/* 供控制台/测试调用 */
+window.MCDSplit = {
+  yuanToCents: yuanToCents,
+  centsToYuan: centsToYuan,
+  allocate: allocate,
+  allocateCapped: allocateCapped,
+  splitBill: splitBill,
+  verifyResult: verifyResult,
+  transfersOf: transfersOf,
+  toMarkdown: toMarkdown,
+  toJson: toJson
+};
+</script>
+</body>
+</html>

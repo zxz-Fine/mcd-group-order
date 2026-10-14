@@ -1,0 +1,49 @@
+name: Deploy GitHub Pages
+
+# 把 docs/ 目录发布成在线试算器：
+#   https://<用户名>.github.io/<仓库名>/
+#
+# 首次运行时，configure-pages 的 enablement: true 会自动把仓库的
+# Pages 源切换为 "GitHub Actions"，无需手动去 Settings 里点。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时刻只跑一个部署；不取消进行中的那次，避免把线上站点搞成半成品
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 配置 Pages（自动启用）
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: 打包 docs/ 目录
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: 部署
+        id: deployment
+        uses: actions/deploy-pages@v4

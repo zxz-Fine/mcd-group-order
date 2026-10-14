@@ -1,0 +1,12 @@
+# 统一行尾为 LF：本仓库有 Linux CI（GitHub Actions）运行器，
+# 避免 Windows 检出时把 CRLF 带进 YAML / 脚本造成诡异问题。
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.png binary
+*.gif binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

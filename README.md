@@ -12,11 +12,21 @@
 
 ![MCP](https://img.shields.io/badge/MCP-%E9%BA%A6%E5%BD%93%E5%8A%B3%E4%B8%AD%E5%9B%BD-DA291C.svg)
 
+![tests](https://img.shields.io/badge/tests-94%20passed-12805C.svg)
+
+### 👉 [**在线试算器 · 打开即用**](https://zxz-fine.github.io/mcd-group-order/) 👈
+
+<sub>不用装任何东西。填人数和金额，实时看分账结果与「合计恒等」校验。</sub>
+
 </div>
 
 ![演示：粘贴群聊记录 → 出分账卡片](demo/demo.gif)
 
 <p align="center"><sub>粘贴群聊记录 → 解析报单 → 券逐张试算 → 精确分账 → 生成卡片（完整流程约 9 秒）</sub></p>
+
+![在线试算器](assets/preview.png)
+
+<p align="center"><sub><a href="https://zxz-fine.github.io/mcd-group-order/">在线分账试算器</a> —— 纯前端确定性算法，浏览器里算，不上传任何数据</sub></p>
 
 ---
 
@@ -82,7 +92,32 @@ cp -r mcd-group-order/skills/mcd-group-order ~/.workbuddy-ai/skills/
 
 ---
 
-## 三种分账口径
+## 在线分账试算器
+
+不想装任何东西？直接打开 **[zxz-fine.github.io/mcd-group-order](https://zxz-fine.github.io/mcd-group-order/)**。
+
+它是一个纯静态单文件页面（`docs/index.html`），把 `split_bill.py` 的分账引擎用浏览器 JS 复刻了一遍：
+
+- 输入谁点了什么、优惠多少，**实时**看每人应付与转账方案；
+- 一张表对比**三种分账口径**下各人差多少；
+- 顶部常驻**恒等校验**徽章：`Σ(每人应付)` 是否精确等于订单实付；
+- 一键复制 Markdown 分账单，直接贴群；
+- 支持粘贴 JSON（与 `split_bill.py` 输入格式一致）批量导入。
+
+**全程在浏览器里算**，无后端、无网络请求、不上传任何数据。
+
+### 前端和后端会不会算出两个结果？
+
+这是复刻算法最大的风险——**代码悄悄漂移**，页面上还照样显示「校验通过」（因为它校验的是它自己）。
+
+所以仓库里有一道专门的锁：`tests/test_frontend_parity.py` 不比对「我复制的代码」，而是**直接加载要发布的那份 HTML**，在 Node 里跑，再和 `split_bill.py` 逐字段比对 `shares` / `summary` / `transfers` / Markdown 全文——包括 **240 组随机账单**。一旦出现 1 分钱差异，测试立刻红。
+
+```bash
+python -m unittest tests.test_frontend_parity -v   # 8 项
+node tests/shot.js                                 # 可选：用本机 Chrome 做可视检查
+```
+
+---
 
 分账最容易吵架的不是「点了什么」，而是「优惠怎么分」。所以这里不替你做决定，而是把口径摆出来：
 
@@ -119,6 +154,9 @@ mcd-group-order/
 ├── MCP_INTEGRATION.md             # MCP 工具映射、调用流程与业务价值
 ├── mcp-config.example.json        # 脱敏的 MCP 配置示例（仅环境变量占位符）
 ├── workbuddy.md                   # WorkBuddy 开发对话上下文
+├── docs/                          # GitHub Pages 站点（在线分账试算器）
+│   └── index.html                 # 单文件纯静态页，内含 JS 版分账引擎
+├── .github/workflows/pages.yml    # 推 main 即自动部署 docs/ 到 Pages
 ├── skills/mcd-group-order/        # 技能主体
 │   ├── SKILL.md                   # 技能入口：触发条件与工作流编排
 │   ├── scripts/
@@ -133,11 +171,15 @@ mcd-group-order/
 │       ├── order-format.md        # 报单文本格式与解析规则
 │       └── split-algorithm.md     # 分账算法与输入输出结构
 ├── examples/                      # 示例输入与产物
+├── assets/preview.png             # 在线试算器预览图
 ├── demo/                          # 演示动图与生成脚本
-└── tests/                         # 单元测试 + MCP 真实格式回归
-    ├── test_split_bill.py         # 分账算法（含 1500 组随机模糊测试）
+└── tests/                         # 单元测试 + MCP 真实格式回归 + 前后端一致性
+    ├── test_split_bill.py         # 分账算法（含 1000 组随机模糊测试）
     ├── test_mcp_formats.py        # 用实测 MCP 响应锁定字段结构
     ├── test_assign_any.py         # 「随便」意图识别与汉堡指派
+    ├── test_frontend_parity.py    # 网页 JS 与 split_bill.py 逐字段一致性
+    ├── parity_check.js            # 在 Node 里加载真实 HTML，供上面的测试调用
+    ├── shot.js                    # 用本机 Chrome 做可视检查（可选）
     └── fixtures/                  # 实测响应样本
 ```
 
@@ -147,12 +189,13 @@ mcd-group-order/
 python -m unittest discover -s tests -v
 ```
 
-共 **86 项**，覆盖：
+共 **94 项**，覆盖：
 
-- **分账算法**：总额守恒、零尾差、三种口径一致性、优惠超过商品总额、单人参单、除不尽场景，以及 1500 组随机模糊测试
+- **分账算法**：总额守恒、零尾差、三种口径一致性、优惠超过商品总额、单人参单、除不尽场景，以及 1000 组随机模糊测试
 - **MCP 真实格式回归**：用实测响应锁定 `data.meals` 的字典结构、`calculate-price` 的「分」单位、券的「按商品绑定」模型
 - **券链路回归**：券用「活动虚拟编码」与菜单对不上、**算价必须传券自己的编码**、**不支持多张券叠加**（`600022`）、券商品经别名接回归属人
 - **泛称指派回归**：「随便」意图识别（含「随便来个巨无霸」不算泛称）、同行连续泛称合并、汉堡识别（分类名优先、排除套餐）、多人不重样、避开已点、忌口过滤、候选耗尽告警、指派确定性
+- **前后端一致性**：网页 JS 与 `split_bill.py` 在示例账单、240 组随机账单、优惠溢出、owner 口径回退、单人拼单、金额格式化等场景下逐字段一致
 
 ## 用到的麦当劳 MCP 能力
 
@@ -171,6 +214,7 @@ python -m unittest discover -s tests -v
 - 本项目为**麦当劳程序员创意开发大赛参赛作品**，由参赛者独立开发，**非麦当劳官方产品**。
 - 餐品信息、价格及优惠以麦当劳官方渠道的实时结果为准；分账结果为计算参考，请以实际支付金额为准。
 - 项目不含任何真实 Token、密钥或他人个人信息，配置文件仅使用环境变量占位符。
+- 在线试算器是**纯前端静态页面**，不收集、不上传任何数据；页面内容仅为计算演示，不构成任何商业服务。
 - 涉及下单、领券等写操作时，均需用户明确确认后才执行。
 
 ## License
