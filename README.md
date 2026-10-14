@@ -96,6 +96,13 @@ cp -r mcd-group-order/skills/mcd-group-order ~/.workbuddy-ai/skills/
 
 不想装任何东西？直接打开 **[zxz-fine.github.io/mcd-group-order](https://zxz-fine.github.io/mcd-group-order/)**。
 
+> **部署者注意**：GitHub Pages 必须由仓库管理员**手动启用一次**（GitHub 硬性要求，
+> 默认 `GITHUB_TOKEN` 无法自动完成）。打开
+> [`settings/pages`](https://github.com/zxz-Fine/mcd-group-order/settings/pages)，
+> Source 二选一：**「Deploy from a branch」→ `main` + `/docs`**（最快，无需工作流），
+> 或 **「GitHub Actions」**（之后每次改 `docs/` 自动部署）。
+> 详见 [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) 顶部的说明。
+
 它是一个纯静态单文件页面（`docs/index.html`），把 `split_bill.py` 的分账引擎用浏览器 JS 复刻了一遍：
 
 - 输入谁点了什么、优惠多少，**实时**看每人应付与转账方案；

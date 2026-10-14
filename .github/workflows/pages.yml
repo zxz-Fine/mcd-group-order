@@ -1,10 +1,26 @@
 name: Deploy GitHub Pages
 
-# 把 docs/ 目录发布成在线试算器：
-#   https://<用户名>.github.io/<仓库名>/
+# 把 docs/ 目录发布成在线试算器：https://<用户名>.github.io/<仓库名>/
 #
-# 首次运行时，configure-pages 的 enablement: true 会自动把仓库的
-# Pages 源切换为 "GitHub Actions"，无需手动去 Settings 里点。
+# ⚠️ 首次使用必须手动启用一次 Pages —— 这是 GitHub 的硬性要求，用默认 GITHUB_TOKEN
+#    无法自动完成。原因见 actions/configure-pages 的 action.yml 原文：
+#
+#      enablement: 'Try to enable Pages for the repository if it is not already enabled.
+#                   This option requires a token other than `GITHUB_TOKEN` to be provided.'
+#
+#    也就是说要自动启用，必须自备 PAT（repo 权限）或 GitHub App token
+#    （administration:write + pages:write）。用默认 GITHUB_TOKEN 会直接失败，
+#    而且 configure-pages 是 setFailed + exit 1 的硬失败，会连带 skip 掉后面的部署步骤。
+#
+#    手动启用一次即可，之后每次 push 都会自动部署：
+#      https://github.com/<用户名>/<仓库名>/settings/pages
+#      → Source 选「GitHub Actions」→ Save
+#      → 回到 Actions 页面重新运行本工作流（或随便 push 一次）
+#
+# 两种部署模式本工作流都能正确应对（见 preflight 任务）：
+#   · build_type = workflow → 由本工作流部署
+#   · build_type = legacy   → 即「Deploy from a branch」(main /docs)，由 GitHub 自己构建，
+#                             本工作流自动跳过，不会在仓库上留下失败记录
 
 on:
   push:
@@ -25,7 +41,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 先探明 Pages 的部署模式，把「没启用」这种配置问题转成一句看得懂的话，
+  # 而不是让后续步骤抛一堆看不懂的 404。
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.check.outputs.mode }}
+    steps:
+      - name: 检查 Pages 配置
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          API="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pages"
+          CODE=$(curl -s -o pages.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API}")
+
+          if [ "${CODE}" = "404" ]; then
+            echo "::error title=Pages 尚未启用::打开 https://github.com/${GITHUB_REPOSITORY}/settings/pages ，把 Source 设为「GitHub Actions」，保存后重新运行本工作流。"
+            exit 1
+          fi
+
+          if [ "${CODE}" != "200" ]; then
+            echo "::error title=查询 Pages 失败::HTTP ${CODE}，响应：$(cat pages.json)"
+            exit 1
+          fi
+
+          MODE=$(python3 -c "import json;print(json.load(open('pages.json')).get('build_type','legacy'))")
+          echo "mode=${MODE}" >> "${GITHUB_OUTPUT}"
+
+          if [ "${MODE}" = "workflow" ]; then
+            echo "✓ Pages 部署模式：GitHub Actions，由本工作流部署"
+          else
+            echo "::notice title=本工作流自动跳过::Pages 当前是「从分支部署」(build_type=${MODE})，由 GitHub 自己构建 docs/，不需要 Actions。"
+          fi
+
   deploy:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'workflow'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -34,10 +89,8 @@ jobs:
       - name: 检出仓库
         uses: actions/checkout@v4
 
-      - name: 配置 Pages（自动启用）
+      - name: 配置 Pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: 打包 docs/ 目录
         uses: actions/upload-pages-artifact@v3
