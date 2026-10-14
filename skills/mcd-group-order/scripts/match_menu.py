@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""麦麦拼单官 · 菜单匹配器 (match_menu)
+
+群聊里大家报的是口语化的名字（「麦辣鸡腿堡套餐」「中薯」），
+而 ``create-order`` 需要的是**餐品编码**。本脚本负责把前者映射到后者。
+
+匹配策略（由强到弱）
+--------------------
+1. 完全一致
+2. 去掉空格/标点/别名归一后一致
+3. 包含关系（报单名 ⊂ 菜单名 或反之）
+4. 字符级相似度（``difflib.SequenceMatcher``）≥ 阈值（默认 0.6）
+5. 仍未命中的，标记为 ``unmatched`` 交回 LLM 判断，不擅自猜测
+
+别名表内置了常见简称（中薯/大薯/可乐/麦乐鸡 …），可自行扩展。
+
+本脚本**不联网、不消耗 MCP 配额**。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from difflib import SequenceMatcher
+from typing import Sequence
+
+from split_bill import cents_to_yuan, yuan_to_cents
+
+ALIASES = {
+    "中薯": "中号薯条",
+    "大薯": "大号薯条",
+    "小薯": "小号薯条",
+    "可乐": "可口可乐",
+    "零度": "零度可乐",
+    "雪碧": "雪碧",
+    "麦乐鸡": "麦乐鸡",
+    "麦辣鸡腿堡": "麦辣鸡腿堡",
+    "板烧": "板烧鸡腿堡",
+    "巨无霸": "巨无霸",
+    "麦香鱼": "麦香鱼",
+    "吉士": "双层吉士汉堡",
+    "鸡翅": "麦辣鸡翅",
+}
+
+_NAME_KEYS = ("name", "mealName", "productName", "title", "dishName", "餐品名称", "名称")
+_CODE_KEYS = ("code", "mealCode", "productCode", "skuId", "id", "餐品编码", "编码")
+_PRICE_KEYS = ("price", "salePrice", "currentPrice", "amount", "价格", "售价")
+
+RE_PUNCT = re.compile(r"[\s\-_·．.、,，/()（）\[\]【】]+")
+
+
+def _first(raw: dict, keys: Sequence[str]):
+    for k in keys:
+        if k in raw and raw[k] not in (None, ""):
+            return raw[k]
+    return None
+
+
+def _norm(text: str) -> str:
+    t = str(text or "")
+    t = ALIASES.get(t.strip(), t)
+    return RE_PUNCT.sub("", t).lower()
+
+
+def _similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def normalize_menu(raw_menu: Sequence[dict]) -> list[dict]:
+    menu: list[dict] = []
+    for i, raw in enumerate(raw_menu or []):
+        if not isinstance(raw, dict):
+            continue
+        name = str(_first(raw, _NAME_KEYS) or "").strip()
+        if not name:
+            continue
+        menu.append(
+            {
+                "code": str(_first(raw, _CODE_KEYS) or f"item-{i}"),
+                "name": name,
+                "price_cents": yuan_to_cents(_first(raw, _PRICE_KEYS) or 0),
+                "raw": raw,
+            }
+        )
+    return menu
+
+
+def match_one(query: str, menu: Sequence[dict], threshold: float = 0.6) -> dict:
+    """把单个报单名匹配到菜单项。"""
+    q_raw = str(query).strip()
+    q = _norm(q_raw)
+    if not q:
+        return {"query": q_raw, "matched": None, "confidence": 0.0, "reason": "空名称"}
+
+    # 1) 完全一致
+    for m in menu:
+        if _norm(m["name"]) == q:
+            return {"query": q_raw, "matched": m, "confidence": 1.0, "reason": "完全一致"}
+
+    # 2) 包含关系
+    contains = [m for m in menu if q in _norm(m["name"]) or _norm(m["name"]) in q]
+    if contains:
+        best = min(contains, key=lambda m: abs(len(_norm(m["name"])) - len(q)))
+        return {"query": q_raw, "matched": best, "confidence": 0.85, "reason": "包含匹配"}
+
+    # 3) 字符集包含：处理词序颠倒（「麦旋风奥利奥」vs「奥利奥麦旋风」）
+    if len(q) >= 2:
+        q_chars = set(q)
+        subset = [m for m in menu if q_chars <= set(_norm(m["name"]))]
+        if subset:
+            best = min(subset, key=lambda m: abs(len(_norm(m["name"])) - len(q)))
+            return {"query": q_raw, "matched": best, "confidence": 0.8, "reason": "字符集匹配（词序不同）"}
+
+    # 4) 相似度
+    scored = [(_similarity(q, _norm(m["name"])), m) for m in menu]
+    scored.sort(key=lambda x: -x[0])
+    if scored and scored[0][0] >= threshold:
+        return {"query": q_raw, "matched": scored[0][1], "confidence": round(scored[0][0], 3), "reason": "相似度匹配"}
+
+    return {
+        "query": q_raw,
+        "matched": None,
+        "confidence": round(scored[0][0], 3) if scored else 0.0,
+        "reason": "未达阈值，需人工/LLM 确认",
+        "suggestions": [m["name"] for _, m in scored[:3]],
+    }
+
+
+def match_orders(orders: Sequence[dict], raw_menu: Sequence[dict], threshold: float = 0.6) -> dict:
+    """批量匹配：orders 为 parse_orders.py 的 orders 字段。"""
+    menu = normalize_menu(raw_menu)
+    results: list[dict] = []
+    unmatched: list[dict] = []
+
+    for o in orders:
+        person = o.get("person", "")
+        for it in o.get("items", []):
+            r = match_one(it.get("name", ""), menu, threshold)
+            entry = {
+                "person": person,
+                "query": it.get("name", ""),
+                "qty": it.get("qty", 1),
+                "note": it.get("note", ""),
+                "matched_code": (r["matched"] or {}).get("code"),
+                "matched_name": (r["matched"] or {}).get("name"),
+                "unit_price": cents_to_yuan((r["matched"] or {}).get("price_cents", 0)),
+                "confidence": r["confidence"],
+                "reason": r["reason"],
+            }
+            if r.get("suggestions"):
+                entry["suggestions"] = r["suggestions"]
+            results.append(entry)
+            if not r["matched"]:
+                unmatched.append(entry)
+
+    return {
+        "menu_size": len(menu),
+        "matched_count": len(results) - len(unmatched),
+        "unmatched_count": len(unmatched),
+        "items": results,
+        "unmatched": unmatched,
+        "next_step": (
+            "对 unmatched 中的条目，请结合门店菜单与用户意图人工确认后补齐餐品编码；"
+            "确认完毕后把 items 组装为 split_bill.py 所需的输入。"
+        ),
+    }
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="match_menu",
+        description="麦麦拼单官 · 报单名 → 菜单餐品编码 匹配器（本地运行）",
+    )
+    p.add_argument("--input", "-i", help="输入 JSON（含 orders 与 menu）；缺省从 stdin 读取")
+    p.add_argument("--threshold", type=float, default=0.6, help="相似度阈值（默认 0.6）")
+    return p
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+
+    if args.input:
+        with open(args.input, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    else:
+        payload = json.load(sys.stdin)
+
+    result = match_orders(
+        orders=payload.get("orders", []),
+        raw_menu=payload.get("menu", []),
+        threshold=args.threshold,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

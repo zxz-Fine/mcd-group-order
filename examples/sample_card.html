@@ -1,0 +1,120 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>麦麦拼单官 · 分账单</title><style>
+:root {
+  --red: #DA291C;
+  --yellow: #FFC72C;
+  --ink: #1F1F1F;
+  --ink-2: #5A5A5A;
+  --ink-3: #8C8C8C;
+  --line: #EDE6DC;
+  --bg: #FAF7F2;
+  --card: #FFFFFF;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 32px 16px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.card {
+  width: 720px;
+  max-width: 100%;
+  margin: 0 auto;
+  background: var(--card);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,.08);
+}
+.head {
+  padding: 24px 28px;
+  background: linear-gradient(120deg, var(--red) 0%, #B41E12 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand .logo {
+  width: 40px; height: 40px; border-radius: 12px;
+  background: var(--yellow); color: var(--red);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 800;
+}
+.brand h1 { margin: 0; font-size: 20px; letter-spacing: .5px; }
+.brand p { margin: 4px 0 0; font-size: 12px; opacity: .82; }
+.head .meta { text-align: right; font-size: 12px; line-height: 1.7; opacity: .92; }
+
+.hero {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid var(--line);
+}
+.hero div { padding: 18px 20px; text-align: center; }
+.hero div + div { border-left: 1px solid var(--line); }
+.hero .k { font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }
+.hero .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hero .v.save { color: var(--red); }
+.hero .v.pay { color: var(--red); }
+.hero .v.strike { color: var(--ink-3); text-decoration: line-through; font-size: 20px; }
+
+.policy {
+  padding: 10px 28px;
+  background: #FFFBF0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.tag {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  background: var(--yellow); color: #6B4A00; font-weight: 600; font-size: 11.5px;
+}
+
+.people { padding: 8px 28px 4px; }
+.person {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 16px 0; border-bottom: 1px dashed var(--line);
+}
+.person:last-child { border-bottom: none; }
+.avatar {
+  flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%;
+  background: #FDECEA; color: var(--red);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 15px;
+}
+.person .body { flex: 1; min-width: 0; }
+.person .name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.person .items { font-size: 12.5px; color: var(--ink-3); line-height: 1.7; word-break: break-all; }
+.person .amount { text-align: right; flex: 0 0 132px; }
+.person .amount .pay { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.person .amount .sub { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.6; }
+
+.transfer { padding: 4px 28px 24px; }
+.transfer h2 {
+  font-size: 13px; color: var(--ink-3); font-weight: 600;
+  margin: 8px 0 10px; letter-spacing: .5px;
+}
+.tr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 14px; border-radius: 10px; background: #FBF8F3;
+  font-size: 13.5px; margin-bottom: 8px;
+}
+.tr .arrow { color: var(--red); font-weight: 700; margin: 0 6px; }
+.tr .amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.foot {
+  padding: 16px 28px 22px; font-size: 11.5px; color: var(--ink-3);
+  line-height: 1.8; border-top: 1px solid var(--line);
+}
+.foot b { color: var(--ink-2); font-weight: 600; }
+.warn {
+  margin: 0 28px 20px; padding: 10px 14px; border-radius: 10px;
+  background: #FFF6E5; color: #8A6100; font-size: 12.5px;
+}
+</style></head><body><div class="card"><div class="head"><div class="brand"><div class="logo">M</div><div><h1>麦麦拼单官 · 分账单</h1><p>麦当劳(中关村大街店)</p></div></div><div class="meta">订单号 MCD20261014120331<br>2026-10-14 12:35<br>5 人</div></div><div class="hero"><div><div class="k">商品原价</div><div class="v strike">¥168.90</div></div><div><div class="k">本单共省</div><div class="v save">-¥20.00</div></div><div><div class="k">实付总额</div><div class="v pay">¥157.90</div></div></div><div class="policy"><span class="tag">优惠 按商品原价比例分摊</span><span class="tag">配送/打包费 均摊</span><span>分账金额精确到分，合计恒等于实付总额。</span></div><div class="people"><div class="person"><div class="avatar">张</div><div class="body"><div class="name">张三</div><div class="items">麦辣鸡腿堡套餐×1</div></div><div class="amount"><div class="pay">¥30.01</div><div class="sub">原价 ¥32.00 · 省 ¥3.79<br>分摊费用 ¥1.80</div></div></div><div class="person"><div class="avatar">李</div><div class="body"><div class="name">李四</div><div class="items">巨无霸×1、中薯条×1、可口可乐×1</div></div><div class="amount"><div class="pay">¥42.35</div><div class="sub">原价 ¥46.00 · 省 ¥5.45<br>分摊费用 ¥1.80</div></div></div><div class="person"><div class="avatar">王</div><div class="body"><div class="name">王五</div><div class="items">麦香鱼×2、中薯条×1</div></div><div class="amount"><div class="pay">¥38.83</div><div class="sub">原价 ¥42.00 · 省 ¥4.97<br>分摊费用 ¥1.80</div></div></div><div class="person"><div class="avatar">赵</div><div class="body"><div class="name">赵六</div><div class="items">板烧鸡腿堡×1、可口可乐×1</div></div><div class="amount"><div class="pay">¥32.66</div><div class="sub">原价 ¥35.00 · 省 ¥4.14<br>分摊费用 ¥1.80</div></div></div><div class="person"><div class="avatar">陈</div><div class="body"><div class="name">陈七</div><div class="items">1+1随心配×1</div></div><div class="amount"><div class="pay">¥14.05</div><div class="sub">原价 ¥13.90 · 省 ¥1.65<br>分摊费用 ¥1.80</div></div></div></div><div class="transfer"><h2>转账（发给垫付人）</h2><div class="tr"><span><b>李四</b><span class="arrow">→</span>张三</span><span class="amt">¥42.35</span></div><div class="tr"><span><b>王五</b><span class="arrow">→</span>张三</span><span class="amt">¥38.83</span></div><div class="tr"><span><b>赵六</b><span class="arrow">→</span>张三</span><span class="amt">¥32.66</span></div><div class="tr"><span><b>陈七</b><span class="arrow">→</span>张三</span><span class="amt">¥14.05</span></div></div><div class="warn">示例数据：5 人办公室拼单，使用「满 100 减 20」券 + 麦乐送配送费 9 元。</div><div class="foot"><b>麦麦拼单官</b> · 麦当劳程序员创意开发大赛参赛作品，由参赛者独立开发，非麦当劳官方产品。<br>餐品信息、价格及优惠以麦当劳官方渠道实时结果为准。分账结果为按所选口径的计算参考，请以实际支付金额为准。</div></div></body></html>

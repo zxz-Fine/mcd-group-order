@@ -1,0 +1,20 @@
+{
+  "note": "示例数据：5 人办公室拼单，使用「满 100 减 20」券 + 麦乐送配送费 9 元。",
+  "payer": "张三",
+  "discount": 20.0,
+  "delivery_fee": 9.0,
+  "packaging_fee": 0,
+  "discount_policy": "proportional",
+  "fee_policy": "equal",
+  "items": [
+    { "person": "张三", "name": "麦辣鸡腿堡套餐", "unit_price": 32.0, "qty": 1 },
+    { "person": "李四", "name": "巨无霸", "unit_price": 25.0, "qty": 1 },
+    { "person": "李四", "name": "中薯条", "unit_price": 12.0, "qty": 1 },
+    { "person": "李四", "name": "可口可乐", "unit_price": 9.0, "qty": 1 },
+    { "person": "王五", "name": "麦香鱼", "unit_price": 15.0, "qty": 2 },
+    { "person": "王五", "name": "中薯条", "unit_price": 12.0, "qty": 1 },
+    { "person": "赵六", "name": "板烧鸡腿堡", "unit_price": 26.0, "qty": 1 },
+    { "person": "赵六", "name": "可口可乐", "unit_price": 9.0, "qty": 1 },
+    { "person": "陈七", "name": "1+1随心配", "unit_price": 13.9, "qty": 1 }
+  ]
+}

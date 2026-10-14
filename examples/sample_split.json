@@ -1,0 +1,95 @@
+{
+  "policy": {
+    "discount": "proportional",
+    "fee": "equal"
+  },
+  "summary": {
+    "subtotal": "168.90",
+    "discount": "20.00",
+    "delivery_fee": "9.00",
+    "packaging_fee": "0.00",
+    "payable": "157.90",
+    "saved": "20.00",
+    "payer": "张三",
+    "overflow": "0.00"
+  },
+  "shares": [
+    {
+      "person": "张三",
+      "subtotal": "32.00",
+      "discount": "3.79",
+      "fee": "1.80",
+      "payable": "30.01",
+      "items": [
+        "麦辣鸡腿堡套餐×1"
+      ]
+    },
+    {
+      "person": "李四",
+      "subtotal": "46.00",
+      "discount": "5.45",
+      "fee": "1.80",
+      "payable": "42.35",
+      "items": [
+        "巨无霸×1",
+        "中薯条×1",
+        "可口可乐×1"
+      ]
+    },
+    {
+      "person": "王五",
+      "subtotal": "42.00",
+      "discount": "4.97",
+      "fee": "1.80",
+      "payable": "38.83",
+      "items": [
+        "麦香鱼×2",
+        "中薯条×1"
+      ]
+    },
+    {
+      "person": "赵六",
+      "subtotal": "35.00",
+      "discount": "4.14",
+      "fee": "1.80",
+      "payable": "32.66",
+      "items": [
+        "板烧鸡腿堡×1",
+        "可口可乐×1"
+      ]
+    },
+    {
+      "person": "陈七",
+      "subtotal": "13.90",
+      "discount": "1.65",
+      "fee": "1.80",
+      "payable": "14.05",
+      "items": [
+        "1+1随心配×1"
+      ]
+    }
+  ],
+  "transfers": [
+    {
+      "from": "李四",
+      "to": "张三",
+      "amount": "42.35"
+    },
+    {
+      "from": "王五",
+      "to": "张三",
+      "amount": "38.83"
+    },
+    {
+      "from": "赵六",
+      "to": "张三",
+      "amount": "32.66"
+    },
+    {
+      "from": "陈七",
+      "to": "张三",
+      "amount": "14.05"
+    }
+  ],
+  "note": "示例数据：5 人办公室拼单，使用「满 100 减 20」券 + 麦乐送配送费 9 元。"
+}
