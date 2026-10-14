@@ -111,7 +111,15 @@ cp -r mcd-group-order/skills/mcd-group-order ~/.workbuddy-ai/skills/
 - 一键复制 Markdown 分账单，直接贴群；
 - 支持粘贴 JSON（与 `split_bill.py` 输入格式一致）批量导入。
 
+站内还有一个 3 幕**动画演示**（[`docs/demo/animation.html`](./docs/demo/animation.html)）：
+群聊报单 → 自动指派「随便」→ 券逐张试算 → 精确分账出图，约 8.8 秒循环。
+它会自动播放，手机上按比例整体缩放；偏好「减少动效」的系统设置会直接停在最后一幕。
+
 **全程在浏览器里算**，无后端、无网络请求、不上传任何数据。
+
+> **`docs/` 就是站点根**，所以任何 `../xxx` 形式的相对链接都会逃出站点、在线上变成 404。
+> `tests/test_docs_links.py` 专门盯这件事（并覆盖锚点与文件存在性），
+> `node tests/shot.js` 还会用真浏览器把站内链接逐个请求一遍。
 
 ### 前端和后端会不会算出两个结果？
 
@@ -177,14 +185,35 @@ mcd-group-order/
 │   └── references/
 │       ├── order-format.md        # 报单文本格式与解析规则
 │       └── split-algorithm.md     # 分账算法与输入输出结构
-├── examples/                      # 示例输入与产物
+├── docs/                          # GitHub Pages 站点 —— 发布的就是这个目录
+│   ├── index.html                 # 在线分账试算器：单文件纯静态，内含 JS 版分账引擎
+│   ├── demo/animation.html        # 3 幕演示动画（自动播放，窄屏等比缩放）
+│   └── examples/sample_card.html  # 分账卡片示例（被动画第 3 幕嵌入）
+├── .github/workflows/pages.yml    # 推 main 即自动部署 docs/ 到 Pages
+├── skills/mcd-group-order/        # 技能主体
+│   ├── SKILL.md                   # 技能入口：触发条件与工作流编排
+│   ├── scripts/
+│   │   ├── parse_orders.py        # 群聊报单解析
+│   │   ├── match_menu.py          # 口语名 → 餐品编码 模糊匹配
+│   │   ├── assign_any.py          # 「随便」→ 指派汉堡（不重样 / 避忌口）
+│   │   ├── plan_coupons.py        # 券↔商品映射与候选剪枝
+│   │   ├── from_price.py          # MCP 算价响应 → 分账输入（金额全程为分）
+│   │   ├── split_bill.py          # 分账引擎（最大余额法）
+│   │   └── render_card.py         # 分账卡片渲染
+│   └── references/
+│       ├── order-format.md        # 报单文本格式与解析规则
+│       └── split-algorithm.md     # 分账算法与输入输出结构
 ├── assets/preview.png             # 在线试算器预览图
-├── demo/                          # 演示动图与生成脚本
-└── tests/                         # 单元测试 + MCP 真实格式回归 + 前后端一致性
+├── demo/                          # 演示动图与合成脚本
+│   ├── demo.gif                   # README 首屏动图
+│   └── make_gif.py                # 把逐帧 PNG 合成为 GIF
+├── examples/                      # 命令行示例输入与产物
+└── tests/                         # 单元测试 + MCP 格式回归 + 前后端一致性 + 站点链接
     ├── test_split_bill.py         # 分账算法（含 1000 组随机模糊测试）
     ├── test_mcp_formats.py        # 用实测 MCP 响应锁定字段结构
     ├── test_assign_any.py         # 「随便」意图识别与汉堡指派
     ├── test_frontend_parity.py    # 网页 JS 与 split_bill.py 逐字段一致性
+    ├── test_docs_links.py         # 站点内部链接不得逃出 docs/、锚点必须存在
     ├── parity_check.js            # 在 Node 里加载真实 HTML，供上面的测试调用
     ├── shot.js                    # 用本机 Chrome 做可视检查（可选）
     └── fixtures/                  # 实测响应样本
@@ -196,13 +225,14 @@ mcd-group-order/
 python -m unittest discover -s tests -v
 ```
 
-共 **94 项**，覆盖：
+共 **99 项**，覆盖：
 
 - **分账算法**：总额守恒、零尾差、三种口径一致性、优惠超过商品总额、单人参单、除不尽场景，以及 1000 组随机模糊测试
 - **MCP 真实格式回归**：用实测响应锁定 `data.meals` 的字典结构、`calculate-price` 的「分」单位、券的「按商品绑定」模型
 - **券链路回归**：券用「活动虚拟编码」与菜单对不上、**算价必须传券自己的编码**、**不支持多张券叠加**（`600022`）、券商品经别名接回归属人
 - **泛称指派回归**：「随便」意图识别（含「随便来个巨无霸」不算泛称）、同行连续泛称合并、汉堡识别（分类名优先、排除套餐）、多人不重样、避开已点、忌口过滤、候选耗尽告警、指派确定性
 - **前后端一致性**：网页 JS 与 `split_bill.py` 在示例账单、240 组随机账单、优惠溢出、owner 口径回退、单人拼单、金额格式化等场景下逐字段一致
+- **站点链接完整性**：`docs/` 下所有 HTML 的相对链接不得逃出站点根（逃出即线上 404）、目标必须存在、页内锚点必须可解析
 
 ## 用到的麦当劳 MCP 能力
 

@@ -2,6 +2,17 @@
 
 用法：
     python make_gif.py <frames_dir> <out.gif> [fps] [width] [colors]
+
+帧从哪来
+--------
+本脚本只负责合成，截帧由外部完成。被截的页面现在是
+``docs/demo/animation.html``（已随站点移入 docs/）。
+
+⚠️ 截帧时**必须关掉页面的自动播放**，否则 requestAnimationFrame 会覆盖
+你传入的 ``render(t)``，截出来全是同一时刻：
+    · 加载 ``docs/demo/animation.html?static=1``，或
+    · 在截帧前先执行 ``window.stopAutoplay()``
+舞台固定 900x700，视口按 900x700 截即可。
 """
 
 import os

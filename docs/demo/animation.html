@@ -2,17 +2,40 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>演示动画 · 麦麦拼单官</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    width: 900px; height: 700px; overflow: hidden;
+    width: 900px; max-width: 100%; min-height: 700px;
+    margin: 0 auto;                 /* 宽屏居中；900px 视口下 auto 两边都是 0，不影响动图截取 */
     background: #FAF7F2;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
                  "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     color: #1F1F1F;
   }
-  .stage { position: relative; width: 900px; height: 700px; }
+  /* 注意：.stage 必须恰好 900x700 且不被其它元素撑高 ——
+     demo.gif 就是按 900x700 视口逐帧截取的，改动会波及动图。 */
+  .stage { position: relative; width: 900px; height: 700px; overflow: hidden; }
   .scene { position: absolute; inset: 0; }
+  /* 窄屏时 .stage 被 transform 缩小，但布局宽度仍是 900px，靠这里裁掉横向溢出 */
+  .scaler { overflow: hidden; }
+
+  /* 舞台下方的返回入口：位于 y=700 以下，因此不会出现在 900x700 的动图帧里 */
+  .back { padding: 2px 0 26px; text-align: center; font-size: 13px; }
+  .back a {
+    color: #DA291C; text-decoration: none; font-weight: 600;
+    border: 1px solid #E8DCCB; border-radius: 999px; padding: 6px 16px;
+    display: inline-block; background: #fff;
+  }
+  .back a:hover { background: #FDECEA; }
+  .back .tip { display: block; margin-top: 10px; font-size: 11.5px; color: #8C8C8C; }
+
+  /* 窄屏（手机）等比缩小。
+     注意：不能用 scale(calc(100vw / 900)) —— scale() 要的是无单位数值，
+     而 calc(100vw / 900) 求值是长度，整条声明会被丢弃（实测 transform 仍是 none）。
+     所以比例由下面的 JS 算好，写进 --fit。900px 视口时 --fit 缺省为 1，动图截取不受影响。 */
+  .stage { transform: scale(var(--fit, 1)); transform-origin: top left; }
 
   /* ---------- 通用 ---------- */
   .caption {
@@ -81,6 +104,7 @@
 </style>
 </head>
 <body>
+<div class="scaler">
 <div class="stage">
 
   <!-- ========== 场景 1 ========== -->
@@ -137,6 +161,12 @@
   </div>
 
 </div>
+</div>
+
+<div class="back">
+  <a href="../">← 返回在线分账试算器</a>
+  <span class="tip">3 幕共约 8.8 秒：群聊报单 → 自动指派「随便」→ 券逐张试算 → 精确分账出图</span>
+</div>
 
 <script>
   const clamp01 = x => Math.max(0, Math.min(1, x));
@@ -179,7 +209,57 @@
   }
 
   window.render = render;
-  render(0);
+
+  /* ---------- 播放驱动 ----------
+     这个舞台原本只被外部逐帧驱动（demo.gif 的截帧脚本会反复调用
+     window.render(t) 然后截图），直接打开页面时 render(0) 让第一幕
+     透明度为 0 —— 整页空白。所以这里补一个自动播放。
+
+     ⚠️ 重新生成 demo.gif 时必须先关掉自动播放，否则 rAF 会覆盖外部传入的 t：
+         · 加载时带 ?static=1，或
+         · 截帧前调用 window.stopAutoplay()                                  */
+  const TOTAL = 8.8;          // 与 demo.gif 的时长（70 帧 @ 8fps ≈ 8.75s）对齐
+  let rafId = null;
+  let t0 = null;
+
+  function loop(now) {
+    if (t0 === null) t0 = now;
+    render(((now - t0) / 1000) % TOTAL);
+    rafId = requestAnimationFrame(loop);
+  }
+
+  window.stopAutoplay = function () {
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    rafId = null;
+  };
+
+  const params = new URLSearchParams(location.search);
+  const reduced = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (params.get('static') === '1') {
+    render(0);                                  // 交给外部驱动
+  } else if (reduced) {
+    render(7.5);                                // 尊重「减少动效」：直接停在第三幕
+  } else {
+    rafId = requestAnimationFrame(loop);
+  }
+
+  /* ---------- 窄屏自适应 ----------
+     舞台是固定 900x700 的画布，手机上按比例整体缩小。
+     900px 及以上一律不缩放（--fit = 1），保证 demo.gif 的逐帧截取与原来完全一致。 */
+  (function fit() {
+    const stage = document.querySelector('.stage');
+    const scaler = document.querySelector('.scaler');
+    function apply() {
+      const s = Math.min(1, window.innerWidth / 900);
+      document.documentElement.style.setProperty('--fit', s);
+      // transform 不占布局，需手动把外层高度压到缩放后的尺寸，否则底下会留一大块空白
+      scaler.style.height = (s < 1 ? 700 * s : 700) + 'px';
+    }
+    window.addEventListener('resize', apply);
+    apply();
+  })();
 </script>
 </body>
 </html>

@@ -114,10 +114,38 @@ function serve(dir) {
     clip: { x: 0, y: 0, width: 1360, height: 1180 }
   });
 
+  /* ---------- 顺带走一遍导航里的站内链接 ----------
+     这一步是 test_docs_links.py 的「可视化」补充：那边查路径，
+     这边真的用浏览器点一次，确认线上不会 404。 */
+  const navHrefs = await page.evaluate(() =>
+    [...document.querySelectorAll('.navlinks a')]
+      .map((a) => a.getAttribute('href'))
+      .filter((h) => h && !/^https?:|^#/.test(h))
+  );
+
+  const navChecks = [];
+  for (const href of navHrefs) {
+    const target = new URL(href, url).href;
+    const resp = await page.request.get(target);
+    navChecks.push({ href, status: resp.status() });
+    if (resp.status() !== 200) fails.push(`站内链接 ${href} 返回 HTTP ${resp.status()}`);
+  }
+
+  /* 动画页里嵌的分账卡片也必须能加载（历史上这里埋过雷） */
+  const animUrl = new URL('./demo/animation.html', url).href;
+  const animResp = await page.request.get(animUrl);
+  navChecks.push({ href: 'demo/animation.html', status: animResp.status() });
+  if (animResp.status() !== 200) fails.push(`动画页返回 HTTP ${animResp.status()}`);
+
+  const cardUrl = new URL('./examples/sample_card.html', url).href;
+  const cardResp = await page.request.get(cardUrl);
+  navChecks.push({ href: 'examples/sample_card.html', status: cardResp.status() });
+  if (cardResp.status() !== 200) fails.push(`卡片页返回 HTTP ${cardResp.status()}`);
+
   await browser.close();
   if (server) server.close();
 
-  console.log(JSON.stringify({ url, probe, errors, fails }, null, 2));
+  console.log(JSON.stringify({ url, probe, navChecks, errors, fails }, null, 2));
   if (fails.length || errors.length) {
     console.error('✗ 可视检查未通过');
     process.exit(1);
